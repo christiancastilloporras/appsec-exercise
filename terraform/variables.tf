@@ -1,5 +1,5 @@
 variable "location" {
-  default = "West Europe"
+  default = "West US"
 }
 
 variable "vm_admin_username" {

@@ -2,8 +2,13 @@ variable "location" {
   default = "West US"
 }
 
-variable "vm_size" {
-  description = "Size of the virtual machines (Mongo VM and AKS nodes)"
+variable "mongo_vm_size" {
+  description = "Size of the MongoDB VM"
+  default     = "Standard_B1s"
+}
+
+variable "aks_vm_size" {
+  description = "Size of the AKS nodes"
   default     = "Standard_B1s"
 }
 

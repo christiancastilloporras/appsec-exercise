@@ -15,8 +15,12 @@ on:
         description: 'Azure Region'
         required: false
         default: 'West US'
-      vm_size:
-        description: 'VM Size (e.g. Standard_B1s, Standard_B2s)'
+      mongo_vm_size:
+        description: 'Mongo VM Size (e.g. Standard_B1s, Standard_B2s, Standard_D2s_v3)'
+        required: false
+        default: 'Standard_B1s'
+      aks_vm_size:
+        description: 'AKS Node VM Size (e.g. Standard_B1s, Standard_B2s, Standard_D2s_v3)'
         required: false
         default: 'Standard_B1s'
 
@@ -53,7 +57,8 @@ jobs:
         cd terraform
         terraform apply -auto-approve \
           -var="location=${{ github.event.inputs.location }}" \
-          -var="vm_size=${{ github.event.inputs.vm_size }}"
+          -var="mongo_vm_size=${{ github.event.inputs.mongo_vm_size }}" \
+          -var="aks_vm_size=${{ github.event.inputs.aks_vm_size }}"
 
     - name: Terraform Destroy
       if: github.event.inputs.action == 'destroy'
@@ -61,4 +66,5 @@ jobs:
         cd terraform
         terraform destroy -auto-approve \
           -var="location=${{ github.event.inputs.location }}" \
-          -var="vm_size=${{ github.event.inputs.vm_size }}"
+          -var="mongo_vm_size=${{ github.event.inputs.mongo_vm_size }}" \
+          -var="aks_vm_size=${{ github.event.inputs.aks_vm_size }}"

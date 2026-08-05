@@ -15,6 +15,10 @@ on:
         description: 'Azure Region'
         required: false
         default: 'West US'
+      vm_size:
+        description: 'VM Size (e.g. Standard_B1s, Standard_B2s)'
+        required: false
+        default: 'Standard_B1s'
 
 env:
   RESOURCE_GROUP: wiz-exercise-rg
@@ -48,11 +52,13 @@ jobs:
       run: |
         cd terraform
         terraform apply -auto-approve \
-          -var="location=${{ github.event.inputs.location }}"
+          -var="location=${{ github.event.inputs.location }}" \
+          -var="vm_size=${{ github.event.inputs.vm_size }}"
 
     - name: Terraform Destroy
       if: github.event.inputs.action == 'destroy'
       run: |
         cd terraform
         terraform destroy -auto-approve \
-          -var="location=${{ github.event.inputs.location }}"
+          -var="location=${{ github.event.inputs.location }}" \
+          -var="vm_size=${{ github.event.inputs.vm_size }}"

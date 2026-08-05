@@ -2,6 +2,11 @@ variable "location" {
   default = "West US"
 }
 
+variable "vm_size" {
+  description = "Size of the virtual machines (Mongo VM and AKS nodes)"
+  default     = "Standard_B1s"
+}
+
 variable "vm_admin_username" {
   default = "azureuser"
 }

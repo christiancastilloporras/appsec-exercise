@@ -135,7 +135,7 @@ resource "azurerm_linux_virtual_machine" "mongo_vm" {
   name                = "mongo-vm"
   resource_group_name = azurerm_resource_group.wiz_exercise.name
   location            = azurerm_resource_group.wiz_exercise.location
-  size                = "Standard_B1s"
+  size                = var.vm_size
   admin_username      = var.vm_admin_username
   admin_password      = var.vm_admin_password
   disable_password_authentication = false
@@ -221,7 +221,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
   default_node_pool {
     name       = "default"
     node_count = 1
-    vm_size    = "Standard_B1s"
+    vm_size    = var.vm_size
     vnet_subnet_id = azurerm_subnet.aks_subnet.id
   }
 

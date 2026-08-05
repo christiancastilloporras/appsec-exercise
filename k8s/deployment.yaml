@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wiz-exercise-app
+  labels:
+    app: wiz-exercise-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wiz-exercise-app
+  template:
+    metadata:
+      labels:
+        app: wiz-exercise-app
+    spec:
+      serviceAccount: wiz-exercise-sa
+      serviceAccountName: wiz-exercise-sa
+      containers:
+      - name: wiz-app
+        # Image updated by CI pipeline via sed
+        image: PLACEHOLDER_ACR.azurecr.io/wiz-exercise:latest
+        ports:
+        - containerPort: 5000
+        envFrom:
+        - configMapRef:
+            name: wiz-app-config
+        env:
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: wiz-app-secrets
+              key: secret_key
+        imagePullPolicy: Always
+      imagePullSecrets:
+      - name: acr-secret

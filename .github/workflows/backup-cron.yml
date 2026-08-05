@@ -1,0 +1,66 @@
+name: Daily MongoDB Backup
+
+on:
+  # Daily at 2:00 AM UTC
+  schedule:
+    - cron: "0 2 * * *"
+  # Allow manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      force_backup:
+        description: 'Force backup now'
+        required: false
+        default: 'false'
+
+env:
+  RESOURCE_GROUP: wiz-exercise-rg
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Terraform
+      uses: hashicorp/setup-terraform@v3
+
+    - name: Azure Login
+      uses: azure/login@v2
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Terraform Init
+      run: |
+        cd terraform
+        terraform init
+
+    - name: Get Terraform Outputs
+      run: |
+        cd terraform
+        echo "MONGO_IP=$(terraform output -raw mongo_vm_public_ip)" >> $GITHUB_ENV
+        echo "STORAGE_ACCOUNT=$(terraform output -raw storage_account_name)" >> $GITHUB_ENV
+        echo "STORAGE_KEY=$(terraform output -raw storage_blob_access_key)" >> $GITHUB_ENV
+        echo "CONTAINER_NAME=$(terraform output -raw storage_container_name)" >> $GITHUB_ENV
+
+    - name: Install mongodump and Azure CLI
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y mongodb-clients azure-cli
+
+    - name: Run MongoDB Backup
+      run: |
+        MONGO_IP=${{ env.MONGO_IP }} \
+        STORAGE_ACCOUNT=${{ env.STORAGE_ACCOUNT }} \
+        STORAGE_KEY=${{ env.STORAGE_KEY }} \
+        CONTAINER_NAME=${{ env.CONTAINER_NAME }} \
+        bash scripts/backup-mongo.sh
+
+    - name: Verify Backup Upload
+      run: |
+        echo "Checking latest backups in blob container..."
+        az storage blob list \
+          --account-name ${{ env.STORAGE_ACCOUNT }} \
+          --account-key ${{ env.STORAGE_KEY }} \
+          --container-name ${{ env.CONTAINER_NAME }} \
+          --query "[].name" -o table

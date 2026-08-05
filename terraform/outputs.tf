@@ -1,0 +1,62 @@
+output "mongo_vm_public_ip" {
+  value = azurerm_public_ip.mongo_pip.ip_address
+}
+
+output "mongo_connection_string" {
+  value = "mongodb://${azurerm_public_ip.mongo_pip.ip_address}:27017/admin-app"
+}
+
+output "mongo_vm_private_ip" {
+  value = azurerm_network_interface.mongo_nic.private_ip_address
+}
+
+output "mongo_vm_identity_principal_id" {
+  value = azurerm_linux_virtual_machine.mongo_vm.identity[0].principal_id
+}
+
+output "acr_login_server" {
+  value = azurerm_container_registry.acr.login_server
+}
+
+output "acr_username" {
+  value = azurerm_container_registry.acr.admin_username
+}
+
+output "acr_password" {
+  value     = azurerm_container_registry.acr.admin_password
+  sensitive = true
+}
+
+output "aks_cluster_name" {
+  value = azurerm_kubernetes_cluster.aks.name
+}
+
+output "aks_kube_config" {
+  value     = azurerm_kubernetes_cluster.aks.kube_config_raw
+  sensitive = true
+}
+
+output "aks_ingress_endpoint" {
+  value = "https://${azurerm_kubernetes_cluster.aks.fqdn}"
+}
+
+output "storage_account_name" {
+  value = azurerm_storage_account.backup_storage.name
+}
+
+output "storage_container_name" {
+  value = azurerm_storage_container.backup_container.name
+}
+
+output "storage_primary_blob_endpoint" {
+  value = azurerm_storage_account.backup_storage.primary_blob_endpoint
+}
+
+output "storage_blob_access_key" {
+  value     = azurerm_storage_account.backup_storage.primary_access_key
+  sensitive = true
+}
+
+output "backup_storage_url" {
+  value = "${azurerm_storage_account.backup_storage.primary_blob_endpoint}${azurerm_storage_container.backup_container.name}"
+}

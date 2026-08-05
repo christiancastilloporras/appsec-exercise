@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wiz-exercise-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    service.beta.kubernetes.io/azure-load-balancer-internal: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: wiz-exercise.westeurope.cloudapp.azure.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          http:
+            service:
+              name: wiz-exercise-service
+              port:
+                number: 80

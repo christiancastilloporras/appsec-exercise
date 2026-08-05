@@ -1,0 +1,115 @@
+name: App Build and Deploy
+
+on:
+  # Manual trigger only
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Docker image tag'
+        required: false
+        default: 'latest'
+      deploy_reason:
+        description: 'Reason for deployment'
+        required: false
+        default: 'Manual deployment'
+
+env:
+  RESOURCE_GROUP: wiz-exercise-rg
+  AKS_CLUSTER_NAME: wiz-aks-cluster
+  ACR_NAME: PLACEHOLDER_ACR
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Terraform
+      uses: hashicorp/setup-terraform@v3
+
+    - name: Azure Login
+      uses: azure/login@v2
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Terraform Init
+      run: |
+        cd terraform
+        terraform init
+
+    - name: Terraform Apply (infrastructure)
+      run: |
+        cd terraform
+        terraform apply -auto-approve
+      id: tfapply
+
+    - name: Get Terraform Outputs
+      run: |
+        cd terraform
+        echo "MONGO_IP=$(terraform output -raw mongo_vm_public_ip)" >> $GITHUB_ENV
+        echo "ACR_NAME=$(terraform output -raw acr_login_server | cut -d'.' -f1)" >> $GITHUB_ENV
+        echo "ACR_USERNAME=$(terraform output -raw acr_username)" >> $GITHUB_ENV
+        echo "ACR_PASSWORD=$(terraform output -raw acr_password)" >> $GITHUB_ENV
+        echo "KUBE_CONFIG=$(terraform output -raw aks_kube_config)" >> $GITHUB_ENV
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to ACR
+      run: |
+        docker login ${{ env.ACR_NAME }}.azurecr.io \
+          -u ${{ env.ACR_USERNAME }} \
+          -p ${{ env.ACR_PASSWORD }}
+
+    - name: Build and Push Docker Image
+      run: |
+        IMAGE_TAG="${{ env.ACR_NAME }}.azurecr.io/wiz-exercise:${{ github.event.inputs.image_tag || 'latest' }}"
+        docker build -t $IMAGE_TAG .
+        docker push $IMAGE_TAG
+        echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v3
+
+    - name: Set up Kubeconfig
+      run: |
+        echo "${{ env.KUBE_CONFIG }}" > $HOME/.kube/config
+
+    - name: Deploy ACR Secret to Kubernetes
+      run: |
+        DOCKER_CONFIG=$(echo "{\"auths\":{\"${{ env.ACR_NAME }}.azurecr.io\":{\"username\":\"${{ env.ACR_USERNAME }}\",\"password\":\"${{ env.ACR_PASSWORD }}\",\"email\":\"\",\"server\":\"${{ env.ACR_NAME }}.azurecr.io\"}}}" | base64 -w 0)
+        cat > /tmp/registry-secret.yaml << EOF
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: acr-secret
+        data:
+          .dockerconfigjson: $DOCKER_CONFIG
+        type: kubernetes.io/dockerconfigjson
+        EOF
+        kubectl apply -f /tmp/registry-secret.yaml
+
+    - name: Update ConfigMap with Mongo IP
+      run: |
+        kubectl create configmap wiz-app-config \
+          --from-literal=MONGO_URI="mongodb://${{ env.MONGO_IP }}:27017/admin-app" \
+          --from-literal=SECRET_KEY="wiz-secret-key" \
+          --dry-run=client -o yaml | kubectl apply -f -
+
+    - name: Deploy K8s Manifests
+      run: |
+        sed "s|PLACEHOLDER_ACR|${{ env.ACR_NAME }}|g; s|latest|${{ github.event.inputs.image_tag || 'latest' }}|g" k8s/deployment.yaml | kubectl apply -f -
+        kubectl apply -f k8s/service-account.yaml
+        kubectl apply -f k8s/cluster-role-binding.yaml
+        kubectl apply -f k8s/secrets.yaml
+        kubectl apply -f k8s/service.yaml
+        kubectl apply -f k8s/ingress.yaml
+
+    - name: Verify Deployment
+      run: |
+        kubectl rollout status deployment/wiz-exercise-app --timeout=120s
+        kubectl get pods -o wide
+        kubectl get services
+        kubectl get ingress
+        echo "App deployed successfully with tag: ${{ github.event.inputs.image_tag || 'latest' }}"

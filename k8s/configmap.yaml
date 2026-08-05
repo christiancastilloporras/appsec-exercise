@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wiz-app-config
+data:
+  MONGO_URI: "mongodb://MONGO_IP_PLACEHOLDER:27017/admin-app"
+  SECRET_KEY: "wiz-secret-key"

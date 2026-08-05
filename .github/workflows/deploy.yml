@@ -1,0 +1,48 @@
+name: Infrastructure Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_reason:
+        description: 'Reason for deployment'
+        required: false
+        default: 'Manual deployment'
+
+env:
+  RESOURCE_GROUP: wiz-exercise-rg
+
+jobs:
+  terraform-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Terraform
+      uses: hashicorp/setup-terraform@v3
+
+    - name: Azure Login
+      uses: azure/login@v2
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Terraform Init
+      run: |
+        cd terraform
+        terraform init
+
+    - name: Terraform Apply
+      run: |
+        cd terraform
+        terraform apply -auto-approve
+
+    - name: Get Terraform Outputs
+      run: |
+        cd terraform
+        terraform output -json
+
+    - name: Verify Infrastructure
+      run: |
+        az vm list -g ${{ env.RESOURCE_GROUP }} -o table
+        az aks list -g ${{ env.RESOURCE_GROUP }} -o table
+        az acr list -g ${{ env.RESOURCE_GROUP }} -o table

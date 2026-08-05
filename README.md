@@ -24,6 +24,7 @@ Internet
 - **Container Registry**: Azure Container Registry (ACR)
 - **Orchestration**: AKS cluster with NGINX Ingress
 - **IaC**: Terraform for all Azure infrastructure
+- **Backups**: Daily MongoDB dumps to Azure Blob Storage (publicly accessible)
 
 ## Directory Structure
 
@@ -51,6 +52,7 @@ WIZ-exercise/
 ├── .github/workflows/
 │   ├── deploy.yml          # Infrastructure deploy (manual)
 │   ├── app-deploy.yml      # App build + deploy (manual)
+│   ├── terraform-apply-destroy.yml # Terraform apply/destroy with VM sizing
 │   └── backup-cron.yml     # Daily MongoDB backup (cron)
 ├── README.md               # This file
 └── terraform/
@@ -82,18 +84,24 @@ terraform init
 terraform apply
 ```
 
+Or use the dedicated Terraform Apply/Destroy workflow with configurable VM sizes:
+
+```bash
+# Navigate to Actions → "Terraform Apply/Destroy" → Run workflow
+# Inputs:
+#   action: apply (or destroy to tear down)
+#   location: West US (default)
+#   mongo_vm_size: Standard_B1s (default) - Mongo VM size
+#   aks_vm_size: Standard_B1s (default) - AKS node size
+```
+
 Terraform creates:
 - Resource Group: `wiz-exercise-rg`
 - MongoDB VM (Ubuntu) with port 27017 open only to AKS subnet
-- AKS Cluster (3 nodes, West Europe)
+- AKS Cluster (1 node, West US) with configurable VM size
 - Azure Container Registry (ACR)
 - Storage Account with public blob container for backups
 - Virtual Network with dedicated subnets (Mongo, AKS)
-
-## Security Warning
-
-This setup intentionally deploys a vulnerable MongoDB instance.
-DO NOT deploy to production. For educational/authorized testing only.
 
 ### Step 2: Deploy the Application
 
@@ -172,13 +180,33 @@ Daily backups are stored in Azure Blob Storage:
 
 ## GitHub Actions Workflows
 
-| Workflow | Trigger | Purpose |
-|----------|---------|---------|
-| `deploy.yml` | Manual (`workflow_dispatch`) | Infrastructure deployment only |
-| `app-deploy.yml` | Manual (`workflow_dispatch`) | Build, push, and deploy app |
-| `backup-cron.yml` | Scheduled (daily 2AM UTC) + Manual | MongoDB backup to Azure Blob (public access) |
+| Workflow | Trigger | Action | Purpose |
+|----------|---------|--------|---------|
+| `deploy.yml` | Manual (`workflow_dispatch`) | — | Infrastructure deployment only |
+| `app-deploy.yml` | Manual (`workflow_dispatch`) | — | Build, push, and deploy app |
+| `terraform-apply-destroy.yml` | Manual (`workflow_dispatch`) | apply/destroy | **NEW** Terraform apply/destroy with configurable VM sizes |
+| `backup-cron.yml` | Scheduled (daily 2AM UTC) + Manual | — | MongoDB backup to Azure Blob (public access) |
 
----
+### Workflow Inputs (terraform-apply-destroy.yml)
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `action` | `apply` | apply or destroy |
+| `location` | `West US` | Azure region |
+| `mongo_vm_size` | `Standard_B1s` | MongoDB VM size |
+| `aks_vm_size` | `Standard_B1s` | AKS node VM size |
+
+### Node.js Version Compatibility
+
+All workflows use actions compatible with **Node.js 24** (GitHub's latest):
+
+| Action | Version |
+|--------|---------|
+| `actions/checkout` | v5 |
+| `hashicorp/setup-terraform` | v4 |
+| `azure/login` | v3 |
+| `docker/setup-buildx-action` | v4 |
+| `azure/setup-kubectl` | v4 |
 
 ## Security Warning
 
@@ -203,6 +231,216 @@ This project contains **intentionally vulnerable components** for educational/se
 |------|----------|--------|---------|
 | 22 | TCP | `*` (world) | SSH to Mongo VM |
 | 27017 | TCP | `10.0.2.0/24` (AKS) | MongoDB (AKS only) |
+
+### Terraform Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `location` | `West US` | Azure region for all resources |
+| `mongo_vm_size` | `Standard_B1s` | MongoDB VM size (1vCPU, 1GB RAM) |
+| `aks_vm_size` | `Standard_B1s` | AKS node pool VM size (1vCPU, 1GB RAM) |
+| `vm_admin_username` | `azureuser` | Admin username for Mongo VM |
+| `vm_admin_password` | `P@ssw0rd1234!` | Admin password for Mongo VM |
+| `mongo_version` | `3.2.22` | MongoDB version (intentionally vulnerable) |
+
+### Terraform Provider Configuration
+
+```hcl
+terraform {
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = ">= 3.0, < 4.0"
+    }
+  }
+}
+```
+
+### Storage Account Configuration
+
+The Azure Storage Account is intentionally misconfigured with public access enabled:
+
+```hcl
+resource "azurerm_storage_account" "backup_storage" {
+  name                     = "wizbackup${formatdate("DDMMYYYYhhmmss", timestamp())}"
+  account_tier             = "Standard"
+  account_replication_type  = "LRS"
+  account_kind             = "StorageV2"
+  
+  # Intentionally vulnerable: Allow public access to blob
+  public_network_access_enabled = true
+  min_tls_version                = "TLS1_0"
+  network_rules {
+    default_action = "Allow"
+    bypass         = ["AzureServices"]
+  }
+}
+
+resource "azurerm_storage_container" "backup_container" {
+  name                  = "mongo-backups"
+  container_access_type = "blob"  # Allows anonymous read access
+}
+```
+
+| Property | Value | Risk |
+|--------|-------|------|
+| `public_network_access_enabled` | `true` | Public network access allowed |
+| `min_tls_version` | `TLS1_0` | Weak TLS protocol (deprecated) |
+| `container_access_type` | `blob` | Anonymous read access to all blobs |
+| `default_action` | `Allow` | No network restrictions |
+
+### MongoDB VM Configuration
+
+```hcl
+resource "azurerm_linux_virtual_machine" "mongo_vm" {
+  name                = "mongo-vm"
+  size                = var.mongo_vm_size
+  admin_username      = var.vm_admin_username
+  admin_password      = var.vm_admin_password
+  
+  # Managed Identity for Azure resource access
+  identity {
+    type = "SystemAssigned"
+  }
+  
+  # Public IP - intentionally exposed
+  network_interface_ids = [azurerm_network_interface.mongo_nic.id]
+  
+  source_image_reference {
+    publisher = "Canonical"
+    offer     = "0001-com-ubuntu-server-jammy"
+    sku       = "22_04-lts"
+    version   = "latest"
+  }
+  
+  # Provisions MongoDB 3.2.22 (vulnerable version)
+  provisioner "remote-exec" {
+    inline = [
+      "wget -qO - https://www.mongodb.org/static/pgp/server-3.2.asc | sudo apt-key add -",
+      "echo 'deb http://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/3.2 ubuntu' | ...",
+      "sudo apt-get install -y mongodb-org=${var.mongo_version}",
+      "sudo systemctl start mongod",
+      "sudo systemctl enable mongod"
+    ]
+  }
+}
+```
+
+### Backup Script
+
+The daily backup script (`scripts/backup-mongo.sh`) performs:
+
+1. Connects to MongoDB via `mongodump` over public IP
+2. Creates a compressed archive with timestamp
+3. Uploads to Azure Blob Storage (publicly accessible)
+4. Verifies upload completion
+
+```bash
+#!/bin/bash
+MONGODUMP_PATH="/usr/bin/mongodump"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+BACKUP_NAME="mongo_${TIMESTAMP}.tar.gz"
+
+# Dump and compress MongoDB data
+$MONGODUMP_PATH --host $MONGO_IP --port 27017 --gzip --archive=$BACKUP_NAME
+
+# Upload to Azure Blob Storage (public container)
+az storage blob upload \
+  --account-name $STORAGE_ACCOUNT \
+  --account-key $STORAGE_KEY \
+  --container-name $CONTAINER_NAME \
+  --name $BACKUP_NAME \
+  --file $BACKUP_NAME \
+  --auth-mode key
+```
+
+### AKS Cluster Configuration
+
+```hcl
+resource "azurerm_kubernetes_cluster" "aks" {
+  name                = "wiz-aks-cluster"
+  location            = var.location
+  resource_group_name = azurerm_resource_group.wiz_exercise.name
+  dns_prefix          = "wizaks"
+  
+  default_node_pool {
+    name       = "default"
+    node_count = 1
+    vm_size    = var.aks_vm_size
+    vnet_subnet_id = azurerm_subnet.aks_subnet.id
+  }
+  
+  identity {
+    type = "SystemAssigned"
+  }
+  
+  network_profile {
+    network_plugin = "azure"
+    service_cidr   = "10.0.3.0/24"
+    dns_service_ip = "10.0.3.10"
+  }
+}
+```
+### Terraform Outputs
+
+| Output | Description |
+|--------|-------------|
+| `mongo_vm_public_ip` | Public IP of MongoDB VM |
+| `aks_ingress_endpoint` | Ingress URL for the Flask app |
+| `acr_login_server` | Azure Container Registry login server |
+| `acr_username` | ACR admin username (if enabled) |
+| `acr_password` | ACR admin password (if enabled) |
+| `aks_kube_config` | Raw kubeconfig for AKS cluster access |
+| `storage_account_name` | Storage account name for backups |
+| `storage_container_name` | Blob container name for backups |
+| `storage_blob_access_key` | Storage access key |
+
+### ConfigMap Pattern (MongoDB IP Injection)
+
+The MongoDB VM public IP is exposed dynamically via Terraform outputs and injected into the Flask app Kubernetes deployment via a ConfigMap:
+
+```yaml
+# k8s/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wiz-app-config
+data:
+  MONGO_URI: "mongodb://<mongo_vm_public_ip>:27017/admin-app"
+  SECRET_KEY: "wiz-secret-key"
+```
+
+The `app-deploy.yml` workflow dynamically generates the ConfigMap after Terraform apply:
+```bash
+kubectl create configmap wiz-app-config \
+  --from-literal=MONGO_URI="mongodb://${MONGO_IP}:27017/admin-app" \
+  --from-literal=SECRET_KEY="wiz-secret-key" \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+### Network Architecture
+
+```
+VNet: 10.0.0.0/16
+├── Subnet: 10.0.1.0/24 (webapp)
+│   └── MongoDB VM (Standard_B1s)
+│       ├── Public IP (SSH open to world)
+│       └── NSG: SSH from *, Mongo 27017 only from AKS subnet
+├── Subnet: 10.0.2.0/24 (aks)
+│   └── AKS Cluster (1 node, Standard_B1s)
+│       └── Ingress: LoadBalancer (public)
+│           └── NGINX Ingress Controller
+└── Service CIDR: 10.0.3.0/24
+```
+
+### K8s RBAC Configuration
+
+| Resource | Name | Role |
+|----------|------|------|
+| ServiceAccount | `wiz-exercise-sa` | App running identity |
+| ClusterRoleBinding | `wiz-exercise-sa-cluster-admin` | ClusterAdmin for service account |
+
+The Flask app pods run with ClusterAdmin privileges through the service account, which is an intentionally over-permissive configuration.
 
 ### Mitigation Recommendations (NOT applied)
 

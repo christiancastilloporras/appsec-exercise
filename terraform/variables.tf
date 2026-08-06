@@ -8,8 +8,8 @@ variable "mongo_vm_size" {
 }
 
 variable "aks_vm_size" {
-  description = "Size of the AKS nodes"
-  default     = "Standard_B1s"
+  description = "Size of the AKS nodes (minimum: Standard_B2s - 2vCPU, 4GB RAM)"
+  default     = "Standard_B2s"
 }
 
 variable "vm_admin_username" {

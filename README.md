@@ -92,7 +92,7 @@ Or use the dedicated Terraform Apply/Destroy workflow with configurable VM sizes
 #   action: apply (or destroy to tear down)
 #   location: West US (default)
 #   mongo_vm_size: Standard_B1s (default) - Mongo VM size
-#   aks_vm_size: Standard_B1s (default) - AKS node size
+#   aks_vm_size: Standard_B2s (default) - AKS node size
 ```
 
 Terraform creates:
@@ -194,7 +194,7 @@ Daily backups are stored in Azure Blob Storage:
 | `action` | `apply` | apply or destroy |
 | `location` | `West US` | Azure region |
 | `mongo_vm_size` | `Standard_B1s` | MongoDB VM size |
-| `aks_vm_size` | `Standard_B1s` | AKS node VM size |
+| `aks_vm_size` | `Standard_B2s` | AKS node VM size (minimum required for AKS) |
 
 ### Node.js Version Compatibility
 
@@ -238,7 +238,7 @@ This project contains **intentionally vulnerable components** for educational/se
 |----------|---------|-------------|
 | `location` | `West US` | Azure region for all resources |
 | `mongo_vm_size` | `Standard_B1s` | MongoDB VM size (1vCPU, 1GB RAM) |
-| `aks_vm_size` | `Standard_B1s` | AKS node pool VM size (1vCPU, 1GB RAM) |
+| `aks_vm_size` | `Standard_B2s` | AKS node pool VM size (2vCPU, 4GB RAM - minimum for AKS) |
 | `vm_admin_username` | `azureuser` | Admin username for Mongo VM |
 | `vm_admin_password` | `P@ssw0rd1234!` | Admin password for Mongo VM |
 | `mongo_version` | `3.2.22` | MongoDB version (intentionally vulnerable) |
@@ -427,7 +427,7 @@ VNet: 10.0.0.0/16
 │       ├── Public IP (SSH open to world)
 │       └── NSG: SSH from *, Mongo 27017 only from AKS subnet
 ├── Subnet: 10.0.2.0/24 (aks)
-│   └── AKS Cluster (1 node, Standard_B1s)
+│   └── AKS Cluster (1 node, Standard_B2s)
 │       └── Ingress: LoadBalancer (public)
 │           └── NGINX Ingress Controller
 └── Service CIDR: 10.0.3.0/24

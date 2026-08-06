@@ -20,9 +20,9 @@ on:
         required: false
         default: 'Standard_B1s'
       aks_vm_size:
-        description: 'AKS Node VM Size (e.g. Standard_B1s, Standard_B2s, Standard_D2s_v3)'
+        description: 'AKS Node VM Size (e.g. Standard_B2s, Standard_D2s_v3, Standard_D4s_v3)'
         required: false
-        default: 'Standard_B1s'
+        default: 'Standard_B2s'
 
 env:
   RESOURCE_GROUP: wiz-exercise-rg

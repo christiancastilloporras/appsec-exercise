@@ -202,13 +202,15 @@ resource "azurerm_subnet" "aks_subnet" {
   resource_group_name  = azurerm_resource_group.wiz_exercise.name
   virtual_network_name = azurerm_virtual_network.wiz_vnet.name
   address_prefixes     = ["10.0.2.0/24"]
-
-  delegation {
-    name = "aks_delegation"
-    service_delegation {
-      name = "Microsoft.ContainerService/managedClusters"
-    }
-  }
+  
+  # AKS will automatically manage the service delegation when creating the cluster
+  # Do not add delegation here - it causes conflicts
+  # delegation {
+  #   name = "aks_delegation"
+  #   service_delegation {
+  #     name = "Microsoft.ContainerService/managedClusters"
+  #   }
+  # }
 }
 
 # AKS Cluster - uses same VNet as Mongo VM

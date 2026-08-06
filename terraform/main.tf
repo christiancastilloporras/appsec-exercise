@@ -4,6 +4,10 @@ terraform {
       source  = "hashicorp/azurerm"
       version = ">= 3.0, < 4.0"
     }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.0"
+    }
   }
 }
 
@@ -162,7 +166,25 @@ resource "azurerm_linux_virtual_machine" "mongo_vm" {
     storage_account_type = "Standard_LRS"
   }
 
-  # Provision MongoDB vulnerable version
+  # Wait for VM to be fully provisioned and IP to be available
+  # Using null_resource with local-exec to trigger provisioning post-creation
+}
+
+# Separate resource to provision MongoDB after VM + IP are ready
+resource "null_resource" "mongo_provision" {
+  depends_on = [
+    azurerm_linux_virtual_machine.mongo_vm,
+    azurerm_public_ip.mongo_pip
+  ]
+
+  connection {
+    type        = "ssh"
+    user        = var.vm_admin_username
+    password    = var.vm_admin_password
+    host        = azurerm_public_ip.mongo_pip.ip_address
+    timeout     = "10m"
+  }
+
   provisioner "remote-exec" {
     inline = [
       "sleep 30",
@@ -173,14 +195,6 @@ resource "azurerm_linux_virtual_machine" "mongo_vm" {
       "sudo systemctl start mongod",
       "sudo systemctl enable mongod"
     ]
-  }
-
-  connection {
-    type        = "ssh"
-    user        = var.vm_admin_username
-    password    = var.vm_admin_password
-    host        = azurerm_public_ip.mongo_pip.ip_address
-    timeout     = "10m"
   }
 }
 
@@ -239,6 +253,9 @@ resource "azurerm_kubernetes_cluster" "aks" {
 }
 
 # AKS ACR Role Assignment
+# Note: The service principal must have "User Access Administrator" or "Owner" 
+# role at the subscription level to create role assignments on ACR.
+# If this fails with AuthorizationFailed, either grant the role or use a custom role.
 resource "azurerm_role_assignment" "acr_pull" {
   scope                = azurerm_container_registry.acr.id
   role_definition_name = "AcrPull"

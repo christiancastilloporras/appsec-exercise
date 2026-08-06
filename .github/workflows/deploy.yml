@@ -25,6 +25,14 @@ jobs:
       uses: azure/login@v3
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
+    
+    - name: Grant RBAC Permission for Role Assignment
+      run: |
+        # The service principal needs User Access Administrator at subscription level
+        # to create role assignments (e.g., ACR Pull role for AKS)
+        SUB_ID=$(az account show --query "id" -o tsv)
+        az role assignment create --assignee $(az account show --query "user.name" -o tsv) --role "User Access Administrator" --scope /subscriptions/$SUB_ID || true
+      continue-on-error: true
 
     - name: Download Terraform State (if exists)
       continue-on-error: true

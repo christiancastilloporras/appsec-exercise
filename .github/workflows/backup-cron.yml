@@ -30,6 +30,14 @@ jobs:
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+    - name: Download Terraform State (if exists)
+      continue-on-error: true
+      run: |
+        curl -sf -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/${{ github.repository }}/releases/latest" \
+          -o /tmp/release.json
+        python3 ../scripts/download_tfstate.py /tmp/release.json "${{ secrets.GITHUB_TOKEN }}"
+
     - name: Terraform Init
       run: |
         cd terraform

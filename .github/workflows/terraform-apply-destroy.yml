@@ -48,11 +48,12 @@ jobs:
 
     - name: Download Terraform State (if exists)
       continue-on-error: true
+      working-directory: .
       run: |
-        curl -sf -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+        curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
           "https://api.github.com/repos/${{ github.repository }}/releases/latest" \
-          -o /tmp/release.json
-        python3 ../../scripts/download_tfstate.py /tmp/release.json "${{ secrets.GITHUB_TOKEN }}"
+          -o /tmp/release.json || true
+        python3 scripts/download_tfstate.py /tmp/release.json "${{ secrets.GITHUB_TOKEN }}"
 
     - name: Terraform Init
       run: |
@@ -77,16 +78,24 @@ jobs:
           -var="mongo_vm_size=${{ github.event.inputs.mongo_vm_size }}" \
           -var="aks_vm_size=${{ github.event.inputs.aks_vm_size }}"
 
-    - name: Create Release and Upload TF State
-      if: github.event.inputs.action == 'apply' && always()
+    - name: Upload TF State to Release
+      if: success() && github.event.inputs.action == 'apply'
       run: |
         # Create or update a release with the state file
         RELEASE_TAG="tf-state"
-        RELEASE_DATA=$(jq -n --arg name "Terraform State" --arg body "TF State file for wiz-exercise" \
-          '{tag_name: "tf-state", name: "Terraform State", body: "TF State file for wiz-exercise", target_commitish: "main", draft: false, prerelease: false}')
+        RELEASE_DATA='{tag_name: "tf-state", name: "Terraform State", body: "TF State file for wiz-exercise", target_commitish: "main", draft: false, prerelease: false}'
+        
+        # Check if state file exists before uploading
+        if [ ! -f terraform/terraform.tfstate ]; then
+          echo "No state file to upload"
+          echo "Terraform state upload skipped" 
+          exit 0
+        fi
+        
+        echo "Found state file, uploading..."
         
         # Try to update existing release first
-        EXISTING_RELEASE=$(curl -sf -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+        EXISTING_RELEASE=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
           "https://api.github.com/repos/${{ github.repository }}/releases/tags/$RELEASE_TAG" || true)
         
         if [ -n "$EXISTING_RELEASE" ] && [ "$EXISTING_RELEASE" != "null" ]; then
@@ -103,7 +112,7 @@ jobs:
         fi
         
         # Delete existing asset if any
-        ASSET_ID=$(curl -sf -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+        ASSET_ID=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
           "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID/assets" | jq -r '.[] | select(.name=="terraform.tfstate") | .id' || true)
         if [ -n "$ASSET_ID" ] && [ "$ASSET_ID" != "null" ]; then
           curl -X DELETE -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \

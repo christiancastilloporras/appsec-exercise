@@ -36,10 +36,10 @@ jobs:
     - name: Download Terraform State (if exists)
       continue-on-error: true
       run: |
-        curl -sf -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+        curl -sLH "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
           "https://api.github.com/repos/${{ github.repository }}/releases/latest" \
-          -o /tmp/release.json
-        python3 ../scripts/download_tfstate.py /tmp/release.json "${{ secrets.GITHUB_TOKEN }}"
+          -o /tmp/release.json || true
+        python3 scripts/download_tfstate.py /tmp/release.json "${{ secrets.GITHUB_TOKEN }}"
 
     - name: Terraform Init
       run: |
@@ -123,12 +123,21 @@ jobs:
         echo "App deployed successfully with tag: ${{ github.event.inputs.image_tag || 'latest' }}"
 
     - name: Upload TF State to Release
-      if: always()
+      if: success()
       run: |
         RELEASE_TAG="tf-state"
-        RELEASE_DATA=$(jq -n \
-          '{tag_name: "tf-state", name: "Terraform State", body: "TF State file for wiz-exercise", target_commitish: "main", draft: false, prerelease: false}')
-        EXISTING_RELEASE=$(curl -sf -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+        RELEASE_DATA='{tag_name: "tf-state", name: "Terraform State", body: "TF State file for wiz-exercise", target_commitish: "main", draft: false, prerelease: false}'
+        
+        # Check if state file exists before uploading
+        if [ ! -f terraform/terraform.tfstate ]; then
+          echo "No state file to upload"
+          echo "Terraform state upload skipped" 
+          exit 0
+        fi
+        
+        echo "Found state file, uploading..."
+        
+        EXISTING_RELEASE=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
           "https://api.github.com/repos/${{ github.repository }}/releases/tags/$RELEASE_TAG" || true)
         if [ -n "$EXISTING_RELEASE" ] && [ "$EXISTING_RELEASE" != "null" ]; then
           RELEASE_ID=$(echo "$EXISTING_RELEASE" | jq -r '.id')
@@ -142,7 +151,7 @@ jobs:
             "https://api.github.com/repos/${{ github.repository }}/releases" \
             -d "$RELEASE_DATA" | jq -r '.id')
         fi
-        ASSET_ID=$(curl -sf -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+        ASSET_ID=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
           "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID/assets" | jq -r '.[] | select(.name=="terraform.tfstate") | .id' || true)
         if [ -n "$ASSET_ID" ] && [ "$ASSET_ID" != "null" ]; then
           curl -X DELETE -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \

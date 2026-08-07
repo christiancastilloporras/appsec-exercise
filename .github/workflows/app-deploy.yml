@@ -93,7 +93,14 @@ jobs:
         echo "ACR_USERNAME=$(terraform output -raw acr_username)" >> $GITHUB_ENV
         echo "ACR_PASSWORD=$(terraform output -raw acr_password)" >> $GITHUB_ENV
         # Capture the auto-generated ingress domain (stable for cluster lifetime)
-        echo "AKS_INGRESS_DOMAIN=$(terraform output -raw aks_ingress_fqdn 2>/dev/null || echo '')" >> $GITHUB_ENV
+        INGRESS_DOMAIN=$(terraform output -raw aks_ingress_fqdn 2>/dev/null || true)
+        # Validate it looks like a domain, otherwise empty
+        if echo "$INGRESS_DOMAIN" | grep -qE '^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$'; then
+          echo "AKS_INGRESS_DOMAIN=$INGRESS_DOMAIN" >> $GITHUB_ENV
+        else
+          echo "AKS_INGRESS_DOMAIN=" >> $GITHUB_ENV
+          echo "Warning: aks_ingress_fqdn not available yet (run terraform apply once)"
+        fi
         # Write kubeconfig directly to file (can't use $GITHUB_ENV for multiline content)
         mkdir -p $HOME/.kube
         terraform output -raw aks_kube_config > $HOME/.kube/config
@@ -147,7 +154,12 @@ jobs:
     - name: Deploy K8s Manifests
       run: |
         sed "s|PLACEHOLDER_ACR|${{ env.ACR_NAME }}|g; s|PLACEHOLDER_TAG|${{ env.IMAGE_TAG }}|g" k8s/deployment.yaml | kubectl apply -f -
-        sed "s|PLACEHOLDER_HOST|${{ env.AKS_INGRESS_DOMAIN }}|g" k8s/ingress.yaml | kubectl apply -f -
+        if [ -n "${{ env.AKS_INGRESS_DOMAIN }}" ]; then
+          sed "s|PLACEHOLDER_HOST|${{ env.AKS_INGRESS_DOMAIN }}|g" k8s/ingress.yaml | kubectl apply -f -
+        else
+          echo "Warning: AKS_INGRESS_DOMAIN not set - deploying ingress without host filter"
+          sed '/host: PLACEHOLDER_HOST/d' k8s/ingress.yaml | kubectl apply -f -
+        fi
         kubectl apply -f k8s/service-account.yaml
         kubectl apply -f k8s/cluster-role-binding.yaml
         kubectl apply -f k8s/secrets.yaml

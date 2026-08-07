@@ -93,7 +93,7 @@ jobs:
         echo "ACR_USERNAME=$(terraform output -raw acr_username)" >> $GITHUB_ENV
         echo "ACR_PASSWORD=$(terraform output -raw acr_password)" >> $GITHUB_ENV
         # Capture the auto-generated ingress domain (stable for cluster lifetime)
-        echo "AKS_INGRESS_DOMAIN=$(terraform output -raw aks_ingress_fqdn)" >> $GITHUB_ENV
+        echo "AKS_INGRESS_DOMAIN=$(terraform output -raw aks_ingress_fqdn 2>/dev/null || echo '')" >> $GITHUB_ENV
         # Write kubeconfig directly to file (can't use $GITHUB_ENV for multiline content)
         mkdir -p $HOME/.kube
         terraform output -raw aks_kube_config > $HOME/.kube/config

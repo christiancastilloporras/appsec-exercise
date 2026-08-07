@@ -50,13 +50,12 @@ WIZ-exercise/
 │   └── backup-mongo.sh     # MongoDB backup script
 ├── wizexercise.txt         # Root-level ID file
 ├── .github/workflows/
-│   ├── deploy.yml          # Infrastructure deploy (manual)
 │   ├── app-deploy.yml      # App build + deploy (manual)
 │   ├── terraform-apply-destroy.yml # Terraform apply/destroy with VM sizing
 │   └── backup-cron.yml     # Daily MongoDB backup (cron)
 ├── README.md               # This file
 └── terraform/
-    ├── main.tf         # Main IaC config (VMs, AKS, ACR)
+    ├── main.tf         Main IaC config (VMs, AKS, ACR)
     ├── variables.tf    # Variables
     └── outputs.tf      # Outputs (IPs, credentials)
 ```
@@ -100,23 +99,25 @@ Terraform creates:
 - MongoDB VM (Ubuntu) with port 27017 open only to AKS subnet
 - AKS Cluster (1 node, West US) with configurable VM size
 - Azure Container Registry (ACR)
-- Storage Account with public blob container for backups
+- Storage Account with public blob container for backups + private container for TF state
 - Virtual Network with dedicated subnets (Mongo, AKS)
 
 ### Step 2: Deploy the Application
 
-Use the app-deploy workflow (triggers full pipeline):
+Use the app-deploy workflow (triggers full pipeline with configurable image tag):
 
 ```bash
-# Navigate to Actions → "App Build and Deploy" → Run workflow
-# Image tag input: "latest" or a custom tag
+# Navigate to Actions → \"App Build and Deploy\" → Run workflow
+# Inputs:
+#   image_tag: Leave empty for git commit SHA (default) or specify custom tag
+#   deploy_reason: Description of the deployment
 ```
 
 Or manually:
 
 ```bash
 cd terraform
-terraform apply -var="image_tag=latest"
+terraform apply
 
 cd ..
 docker build -t <acr-name>.azurecr.io/wiz-exercise:latest .
@@ -182,9 +183,8 @@ Daily backups are stored in Azure Blob Storage:
 
 | Workflow | Trigger | Action | Purpose |
 |----------|---------|--------|---------|
-| `deploy.yml` | Manual (`workflow_dispatch`) | — | Infrastructure deployment only |
-| `app-deploy.yml` | Manual (`workflow_dispatch`) | — | Build, push, and deploy app |
-| `terraform-apply-destroy.yml` | Manual (`workflow_dispatch`) | apply/destroy | **NEW** Terraform apply/destroy with configurable VM sizes |
+| `app-deploy.yml` | Manual (`workflow_dispatch`) | — | Build, push, and deploy app with git SHA tags |
+| `terraform-apply-destroy.yml` | Manual (`workflow_dispatch`) | apply/destroy | Terraform apply/destroy with configurable VM sizes, Azure Blob TF state |
 | `backup-cron.yml` | Scheduled (daily 2AM UTC) + Manual | — | MongoDB backup to Azure Blob (public access) |
 
 ### Workflow Inputs (terraform-apply-destroy.yml)
@@ -196,17 +196,29 @@ Daily backups are stored in Azure Blob Storage:
 | `mongo_vm_size` | `Standard_B1s` | MongoDB VM size |
 | `aks_vm_size` | `Standard_B2s` | AKS node VM size (minimum required for AKS) |
 
+### Terraform State Management
+
+Terraform state files are stored in **Azure Blob Storage** (not GitHub Releases) in a private `tfstate` container.
+
+|| Workflow | State Download | State Upload |
+|-----------|---------------|---------------|
+| `terraform-apply-destroy.yml` | `az storage account list` + `az storage blob download` | `az storage blob upload` (apply only) |
+| `app-deploy.yml` | `az storage account list` + `az storage blob download` | `az storage blob upload` |
+| `backup-cron.yml` | `az storage account list` + `az storage blob download` | N/A (read-only) |
+
+The download step uses Azure CLI with service principal authentication (`--auth-mode login`) to access the private TF state container. The storage account name is discovered dynamically via `az storage account list` using the resource group filter.
+
 ### Node.js Version Compatibility
 
 All workflows use actions compatible with **Node.js 24** (GitHub's latest):
 
-| Action | Version |
-|--------|---------|
-| `actions/checkout` | v5 |
-| `hashicorp/setup-terraform` | v4 |
-| `azure/login` | v3 |
-| `docker/setup-buildx-action` | v4 |
-| `azure/setup-kubectl` | v4 |
+|| Action | Version |
+||--------|---------|
+|| `actions/checkout` | v5 |
+|| `hashicorp/setup-terraform` | v4 |
+|| `azure/login` | v3 |
+|| `docker/setup-buildx-action` | v4 |
+|| `azure/setup-kubectl` | v4 |
 
 ## Security Warning
 
@@ -278,7 +290,14 @@ resource "azurerm_storage_account" "backup_storage" {
 
 resource "azurerm_storage_container" "backup_container" {
   name                  = "mongo-backups"
-  container_access_type = "blob"  # Allows anonymous read access
+  storage_account_name  = azurerm_storage_account.backup_storage.name
+  container_access_type = "blob"  # Allows anonymous read access (intentionally vulnerable)
+}
+
+resource "azurerm_storage_container" "tfstate_container" {
+  name                  = "tfstate"
+  storage_account_name  = azurerm_storage_account.backup_storage.name
+  container_access_type = "private" # TF state stored privately
 }
 ```
 
@@ -391,9 +410,11 @@ resource "azurerm_kubernetes_cluster" "aks" {
 | `acr_username` | ACR admin username (if enabled) |
 | `acr_password` | ACR admin password (if enabled) |
 | `aks_kube_config` | Raw kubeconfig for AKS cluster access |
-| `storage_account_name` | Storage account name for backups |
-| `storage_container_name` | Blob container name for backups |
-| `storage_blob_access_key` | Storage access key |
+| `storage_account_name` | Storage account name for backups and TF state |
+|| `storage_container_name` | Blob container name for backups (`mongo-backups`) |
+|| `storage_blob_access_key` | Storage access key |
+|| `tfstate_container_name` | Blob container name for TF state (`tfstate`, private) |
+|| `tfstate_storage_url` | Full URL for TF state storage |
 
 ### ConfigMap Pattern (MongoDB IP Injection)
 

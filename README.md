@@ -22,7 +22,7 @@ Internet
 - **Frontend**: Flask web app (Docker container) with admin login
 - **Backend**: MongoDB 3.2.22 (vulnerable version) on Azure VM
 - **Container Registry**: Azure Container Registry (ACR)
-- **Orchestration**: AKS cluster with NGINX Ingress
+- **Orchestration**: AKS cluster with Application Routing Add-on (NGINX-based)
 - **IaC**: Terraform for all Azure infrastructure
 - **Backups**: Daily MongoDB dumps to Azure Blob Storage (publicly accessible)
 
@@ -262,7 +262,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = ">= 3.0, < 4.0"
+      version = ">= 4.0, < 5.0"
     }
   }
 }
@@ -290,13 +290,13 @@ resource "azurerm_storage_account" "backup_storage" {
 
 resource "azurerm_storage_container" "backup_container" {
   name                  = "mongo-backups"
-  storage_account_name  = azurerm_storage_account.backup_storage.name
+  storage_account_id    = azurerm_storage_account.backup_storage.id
   container_access_type = "blob"  # Allows anonymous read access (intentionally vulnerable)
 }
 
 resource "azurerm_storage_container" "tfstate_container" {
   name                  = "tfstate"
-  storage_account_name  = azurerm_storage_account.backup_storage.name
+  storage_account_id    = azurerm_storage_account.backup_storage.id
   container_access_type = "private" # TF state stored privately
 }
 ```
@@ -392,7 +392,12 @@ resource "azurerm_kubernetes_cluster" "aks" {
   identity {
     type = "SystemAssigned"
   }
-  
+
+  # Enable Application Routing add-on (NGINX-based, replaces deprecated HTTP App Routing)
+  web_app_routing {
+    dns_zone_ids = []  # Empty = AKS auto-creates DNS zone
+  }
+
   network_profile {
     network_plugin = "azure"
     service_cidr   = "10.0.3.0/24"

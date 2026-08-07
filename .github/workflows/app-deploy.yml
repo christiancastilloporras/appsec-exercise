@@ -118,7 +118,7 @@ jobs:
     - name: Install kubectl
       uses: azure/setup-kubectl@v4
 
-    - name: Set up Kubeconfig (already written above)
+    - name: Set up Kubeconfig
       run: |
         chmod 600 $HOME/.kube/config
         kubectl version --client
@@ -152,7 +152,6 @@ jobs:
         kubectl apply -f k8s/cluster-role-binding.yaml
         kubectl apply -f k8s/secrets.yaml
         kubectl apply -f k8s/service.yaml
-        kubectl apply -f k8s/ingress.yaml
 
     - name: Verify Deployment
       run: |

@@ -19,7 +19,7 @@ spec:
       containers:
       - name: wiz-app
         # Image updated by CI pipeline via sed
-        image: PLACEHOLDER_ACR.azurecr.io/wiz-exercise:latest
+        image: PLACEHOLDER_ACR.azurecr.io/wiz-exercise:PLACEHOLDER_TAG
         ports:
         - containerPort: 5000
         envFrom:

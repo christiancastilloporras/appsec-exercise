@@ -14,6 +14,7 @@ on:
 
 env:
   RESOURCE_GROUP: wiz-exercise-rg
+  TFSTATE_CONTAINER: tfstate
 
 jobs:
   backup:
@@ -33,10 +34,22 @@ jobs:
     - name: Download Terraform State (if exists)
       continue-on-error: true
       run: |
-        curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-          "https://api.github.com/repos/${{ github.repository }}/releases/latest" \
-          -o /tmp/release.json || true
-        python3 scripts/download_tfstate.py /tmp/release.json "${{ secrets.GITHUB_TOKEN }}"
+        echo "Attempting to download Terraform state from Azure Blob Storage..."
+        # Find storage account name from resource group
+        TFSTATE_STORAGE_ACCOUNT=$(az storage account list \
+          --resource-group "$RESOURCE_GROUP" \
+          --query "[?contains(name, 'wizbackup')].name | [0]" -o tsv 2>/dev/null)
+        if [ -n "$TFSTATE_STORAGE_ACCOUNT" ]; then
+          echo "Found storage account: $TFSTATE_STORAGE_ACCOUNT"
+          python3 scripts/download_tfstate.py "$TFSTATE_STORAGE_ACCOUNT" "${TFSTATE_CONTAINER}" ""
+        else
+          echo "No storage account found in resource group $RESOURCE_GROUP"
+        fi
+        if [ -f terraform/terraform.tfstate ]; then
+          echo "State file found: $(wc -c < terraform/terraform.tfstate) bytes"
+        else
+          echo "No state file downloaded - using local state"
+        fi
 
     - name: Terraform Init
       run: |

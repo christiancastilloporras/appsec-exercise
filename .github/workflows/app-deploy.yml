@@ -16,6 +16,7 @@ env:
   RESOURCE_GROUP: wiz-exercise-rg
   AKS_CLUSTER_NAME: wiz-aks-cluster
   ACR_NAME: PLACEHOLDER_ACR
+  TFSTATE_CONTAINER: tfstate
 
 jobs:
   build-and-deploy:
@@ -56,10 +57,22 @@ jobs:
     - name: Download Terraform State (if exists)
       continue-on-error: true
       run: |
-        curl -sLH "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-          "https://api.github.com/repos/${{ github.repository }}/releases/latest" \
-          -o /tmp/release.json || true
-        python3 scripts/download_tfstate.py /tmp/release.json "${{ secrets.GITHUB_TOKEN }}"
+        echo "Attempting to download Terraform state from Azure Blob Storage..."
+        # Find storage account name from resource group
+        TFSTATE_STORAGE_ACCOUNT=$(az storage account list \
+          --resource-group "$RESOURCE_GROUP" \
+          --query "[?contains(name, 'wizbackup')].name | [0]" -o tsv 2>/dev/null)
+        if [ -n "$TFSTATE_STORAGE_ACCOUNT" ]; then
+          echo "Found storage account: $TFSTATE_STORAGE_ACCOUNT"
+          python3 scripts/download_tfstate.py "$TFSTATE_STORAGE_ACCOUNT" "${TFSTATE_CONTAINER}" ""
+        else
+          echo "No storage account found in resource group $RESOURCE_GROUP"
+        fi
+        if [ -f terraform/terraform.tfstate ]; then
+          echo "State file found: $(wc -c < terraform/terraform.tfstate) bytes"
+        else
+          echo "No state file downloaded - using local state"
+        fi
 
     - name: Terraform Init
       run: |
@@ -142,52 +155,32 @@ jobs:
         kubectl get ingress
         echo "App deployed successfully with tag: ${{ env.IMAGE_TAG }}"
 
-    - name: Upload TF State to Release
+    - name: Upload TF State to Azure Blob Storage
       if: always()
       run: |
-        RELEASE_TAG="tf-state"
-        RELEASE_DATA=$(echo '{"tag_name":"tf-state","name":"Terraform State","body":"TF State file for wiz-exercise","target_commitish":"main","draft":false,"prerelease":false}')
-        
-        # Check if state file exists before uploading
         if [ ! -f terraform/terraform.tfstate ]; then
           echo "No state file to upload"
-          echo "Terraform state upload skipped" 
           exit 0
         fi
-        
-        echo "Found state file, uploading..."
-        
-        EXISTING_RELEASE=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-          "https://api.github.com/repos/${{ github.repository }}/releases/tags/$RELEASE_TAG" || true)
-        RELEASE_EXISTS=$(echo "$EXISTING_RELEASE" | jq -r 'has("id")' 2>/dev/null)
-        if [ "$RELEASE_EXISTS" = "true" ]; then
-          RELEASE_ID=$(echo "$EXISTING_RELEASE" | jq -r '.id')
-          curl -X PATCH -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID" \
-            -d "$RELEASE_DATA"
-        else
-          echo "Creating new release..."
-          RELEASE_RESPONSE=$(curl -s -X POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${{ github.repository }}/releases" \
-            -d "$RELEASE_DATA")
-          echo "Release response: $RELEASE_RESPONSE"
-          RELEASE_ID=$(echo "$RELEASE_RESPONSE" | jq -r '.id' 2>/dev/null)
-          if [ -z "$RELEASE_ID" ] || [ "$RELEASE_ID" = "null" ]; then
-            echo "Failed to create release"
-            echo "Full response: $RELEASE_RESPONSE"
-            exit 1
-          fi
+
+        echo "Found state file, uploading to Azure Blob Storage..."
+        STATE_FILE="terraform/terraform.tfstate"
+
+        # Upload using service principal auth via Azure CLI login
+        TFSTATE_STORAGE_ACCOUNT=$(cd terraform && terraform output -raw storage_account_name 2>/dev/null)
+
+        if [ -z "$TFSTATE_STORAGE_ACCOUNT" ]; then
+          echo "ERROR: Could not get storage account name from terraform output"
+          exit 1
         fi
-        ASSET_ID=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-          "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID/assets" | jq -r '.[] | select(.name=="terraform.tfstate") | .id' || true)
-        if [ -n "$ASSET_ID" ] && [ "$ASSET_ID" != "null" ]; then
-          curl -X DELETE -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/assets/$ASSET_ID"
-        fi
-        curl -X POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-          -H "Accept: application/octet-stream" \
-          "https://uploads.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID/assets?name=terraform.tfstate" \
-          -H "Content-Type: application/octet-stream" \
-          --data-binary @terraform/terraform.tfstate || true
+
+        echo "Uploading to storage account: $TFSTATE_STORAGE_ACCOUNT"
+        az storage blob upload \
+          --account-name "$TFSTATE_STORAGE_ACCOUNT" \
+          --container-name "${TFSTATE_CONTAINER}" \
+          --name "terraform.tfstate" \
+          --file "$STATE_FILE" \
+          --auth-mode login \
+          --overwrite
+
+        echo "TF state uploaded to Azure Blob Storage successfully"

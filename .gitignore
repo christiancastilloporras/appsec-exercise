@@ -1,3 +1,6 @@
+# Graphify
+graphify-out/
+
 # Terraform
 .terraform/
 *.tfstate

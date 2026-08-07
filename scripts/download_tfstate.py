@@ -1,46 +1,41 @@
 #!/usr/bin/env python3
-"""Download Terraform state file from GitHub release assets."""
+"""Download Terraform state file from Azure Blob Storage."""
 import sys
-import json
-import urllib.request
 import os
+import subprocess
 
 
 def main():
-    release_file = sys.argv[1] if len(sys.argv) > 1 else "/tmp/release.json"
-    token_arg = sys.argv[2].strip() if len(sys.argv) > 2 else os.environ.get("GITHUB_TOKEN", "")
+    storage_account = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("TFSTATE_STORAGE_ACCOUNT", "")
+    container_name = sys.argv[2] if len(sys.argv) > 2 else os.environ.get("TFSTATE_CONTAINER", "tfstate")
+    blob_name = "terraform.tfstate"
+
+    if not storage_account:
+        print("No storage account name provided")
+        sys.exit(0)
 
     try:
-        with open(release_file) as f:
-            data = json.load(f)
+        result = subprocess.run(
+            ["az", "storage", "blob", "download",
+             "--account-name", storage_account,
+             "--container-name", container_name,
+             "--name", blob_name,
+             "--file", "terraform/terraform.tfstate",
+             "--auth-mode", "login",
+             "--no-progress"],
+            capture_output=True, text=True, timeout=120
+        )
+        if result.returncode == 0:
+            size = os.path.getsize("terraform/terraform.tfstate")
+            print(f"Downloaded state file ({size} bytes)")
+        else:
+            print(f"Failed to download: {result.stderr}")
+    except subprocess.TimeoutExpired:
+        print("Download timed out")
+    except FileNotFoundError:
+        print("State file not found in blob storage")
     except Exception as e:
-        print(f"No release file found: {e}")
-        sys.exit(0)
-
-    if not data or (isinstance(data, dict) and "message" in data):
-        print("No release found in JSON response")
-        sys.exit(0)
-
-    for asset in data.get("assets", []):
-        if asset["name"] == "terraform.tfstate":
-            # Use asset_url for authenticated API request
-            url = asset["url"]
-            headers = {"Accept": "application/octet-stream"}
-            if token_arg:
-                headers["Authorization"] = f"token {token_arg}"
-            try:
-                req = urllib.request.Request(url, headers=headers)
-                with urllib.request.urlopen(req) as r:
-                    content = r.read()
-                os.makedirs("terraform", exist_ok=True)
-                with open("terraform/terraform.tfstate", "wb") as f:
-                    f.write(content)
-                print(f"Downloaded state file ({len(content)} bytes)")
-            except Exception as e:
-                print(f"Failed to download state file: {e}")
-            sys.exit(0)
-
-    print("No terraform.tfstate asset found in latest release")
+        print(f"Failed to download state file: {e}")
 
 
 if __name__ == "__main__":

@@ -303,3 +303,10 @@ resource "azurerm_storage_container" "backup_container" {
   storage_account_name  = azurerm_storage_account.backup_storage.name
   container_access_type = "blob"  # "blob" = anonymous read access to blobs (vulnerable)
 }
+
+# Private container for Terraform state files
+resource "azurerm_storage_container" "tfstate_container" {
+  name                  = "tfstate"
+  storage_account_name  = azurerm_storage_account.backup_storage.name
+  container_access_type = "private"
+}

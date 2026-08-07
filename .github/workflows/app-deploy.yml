@@ -152,7 +152,8 @@ jobs:
         
         EXISTING_RELEASE=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
           "https://api.github.com/repos/${{ github.repository }}/releases/tags/$RELEASE_TAG" || true)
-        if [ -n "$EXISTING_RELEASE" ] && [ "$EXISTING_RELEASE" != "null" ]; then
+        RELEASE_EXISTS=$(echo "$EXISTING_RELEASE" | jq -r 'has("id")' 2>/dev/null)
+        if [ "$RELEASE_EXISTS" = "true" ]; then
           RELEASE_ID=$(echo "$EXISTING_RELEASE" | jq -r '.id')
           curl -X PATCH -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \

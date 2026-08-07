@@ -68,6 +68,11 @@ jobs:
           "https://api.github.com/repos/${{ github.repository }}/releases/latest" \
           -o /tmp/release.json || true
         python3 scripts/download_tfstate.py /tmp/release.json "${{ secrets.GITHUB_TOKEN }}"
+        if [ -f terraform/terraform.tfstate ]; then
+          echo "State file found: $(wc -c < terraform/terraform.tfstate) bytes"
+        else
+          echo "No state file downloaded - will use Azure CLI cleanup as fallback"
+        fi
 
     - name: Terraform Init
       run: |
@@ -96,13 +101,27 @@ jobs:
       if: github.event.inputs.action == 'destroy'
       run: |
         cd terraform
+        # Check if state file exists
+        if [ ! -f terraform.tfstate ]; then
+          echo "No state file found. Resources may have been partially created."
+          echo "Attempting Azure CLI cleanup..."
+          # List all resource groups matching the naming pattern
+          az group list --query "[?contains(name, 'wiz-exercise')].name" -o tsv | while read rg; do
+            if [ -n "$rg" ]; then
+              echo "Deleting resource group: $rg"
+              az group delete --name "$rg" --yes --no-wait
+            fi
+          done
+          echo "Azure CLI cleanup initiated. Check Azure portal for completion."
+          exit 0
+        fi
         terraform destroy -auto-approve \
           -var="location=${{ github.event.inputs.location }}" \
           -var="mongo_vm_size=${{ github.event.inputs.mongo_vm_size }}" \
           -var="aks_vm_size=${{ github.event.inputs.aks_vm_size }}"
 
     - name: Upload TF State to Release
-      if: always() && github.event.inputs.action == 'apply'
+      if: always() && hashFiles('terraform/terraform.tfstate') != ''
       run: |
         # Create or update a release with the state file
         RELEASE_TAG="tf-state"

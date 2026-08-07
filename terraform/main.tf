@@ -159,9 +159,9 @@ resource "azurerm_linux_virtual_machine" "mongo_vm" {
 
   source_image_reference {
     publisher = "Canonical"
-    offer     = "0001-com-ubuntu-server-jammy"
-    sku       = "22_04-lts"
-    version   = "latest"
+    offer     = "UbuntuServer"
+    sku       = "18.04-LTS"
+    version   = "18.04.202304110"
   }
 
   os_disk {

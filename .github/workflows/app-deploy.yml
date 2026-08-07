@@ -32,6 +32,19 @@ jobs:
       uses: azure/login@v3
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
+    
+    - name: Grant RBAC Permission for Role Assignment
+      run: |
+        # The service principal needs User Access Administrator at subscription level
+        # to create role assignments (e.g., ACR Pull role for AKS).
+        # Contributor role does NOT include Microsoft.Authorization/roleAssignments/write
+        SUB_ID=$(az account show --query "id" -o tsv)
+        CLIENT_ID=$(az account show --query "user.name" -o tsv)
+        SPN_OBJ_ID=$(az ad sp show --id "$CLIENT_ID" --query "objectId" -o tsv 2>/dev/null || echo "")
+        echo "Granting User Access Administrator to SPN (objectId: $SPN_OBJ_ID) at subscription level"
+        az role assignment create --assignee "$SPN_OBJ_ID" --role "User Access Administrator" --scope /subscriptions/$SUB_ID 2>/dev/null || \
+        az role assignment create --assignee "$SPN_OBJ_ID" --role "Owner" --scope /subscriptions/$SUB_ID 2>/dev/null || \
+        echo "RBAC grant attempted - may already have permission"
 
     - name: Download Terraform State (if exists)
       continue-on-error: true

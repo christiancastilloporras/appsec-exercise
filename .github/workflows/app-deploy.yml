@@ -107,9 +107,12 @@ jobs:
     - name: Build and Push Docker Image
       run: |
         IMAGE_TAG="${{ env.IMAGE_TAG }}"
-        docker build -t $IMAGE_TAG .
-        docker push $IMAGE_TAG
+        ACR_FULL="${{ env.ACR_NAME }}.azurecr.io"
+        FULL_IMAGE="$ACR_FULL/wiz-exercise:$IMAGE_TAG"
+        docker build -t "$FULL_IMAGE" .
+        docker push "$FULL_IMAGE"
         echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+        echo "IMAGE_FULL=$FULL_IMAGE" >> $GITHUB_ENV
     - name: Install kubectl
       uses: azure/setup-kubectl@v4
     - name: Set up Kubeconfig (already written above)
@@ -119,7 +122,7 @@ jobs:
 
     - name: Deploy ACR Secret to Kubernetes
       run: |
-        DOCKER_CONFIG=$(echo "{\"auths\":{\"${{ env.ACR_NAME }}.azurecr.io\":{\"username\":\"${{ env.ACR_USERNAME }}\",\"password\":\"${{ env.ACR_PASSWORD }}\",\"email\":\"\",\"server\":\"${{ env.ACR_NAME }}.azurecr.io\"}}}" | base64 -w 0)
+        DOCKER_CONFIG=$(echo '{"auths":{"${{ env.ACR_NAME }}.azurecr.io":{"username":"${{ env.ACR_USERNAME }}","password":"${{ env.ACR_PASSWORD }}","email":"","server":"${{ env.ACR_NAME }}.azurecr.io"}}}' | base64 -w 0)
         cat > /tmp/registry-secret.yaml << EOF
         apiVersion: v1
         kind: Secret

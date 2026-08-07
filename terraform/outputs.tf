@@ -40,6 +40,13 @@ output "aks_ingress_endpoint" {
   value = "https://${azurerm_kubernetes_cluster.aks.fqdn}"
 }
 
+# Domain from AKS Application Routing add-on
+# The domain is auto-generated and stable for the cluster's lifetime
+output "aks_ingress_fqdn" {
+  value       = data.azurerm_kubernetes_cluster.aks.http_application_routing_zone_name
+  description = "FQDN for the ingress - stable for cluster lifetime"
+}
+
 output "storage_account_name" {
   value = azurerm_storage_account.backup_storage.name
 }

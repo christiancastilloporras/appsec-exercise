@@ -292,6 +292,14 @@ resource "azurerm_role_assignment" "acr_pull" {
   principal_id         = azurerm_kubernetes_cluster.aks.kubelet_identity[0].object_id
 }
 
+# Data source to read AKS cluster details after creation
+# Used to get the auto-generated Application Routing DNS zone name
+data "azurerm_kubernetes_cluster" "aks" {
+  name                = azurerm_kubernetes_cluster.aks.name
+  resource_group_name = azurerm_resource_group.wiz_exercise.name
+  depends_on          = [azurerm_kubernetes_cluster.aks]
+}
+
 # Random suffix for unique resource names (prevents recreation on every apply)
 resource "random_string" "storage_suffix" {
   length  = 12

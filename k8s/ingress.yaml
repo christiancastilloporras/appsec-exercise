@@ -8,7 +8,8 @@ spec:
   # AKS Application Routing add-on uses this class name
   ingressClassName: webapprouting.kubernetes.azure.com
   rules:
-  - http:
+  - host: PLACEHOLDER_HOST
+    http:
       paths:
       - path: /
         pathType: Prefix

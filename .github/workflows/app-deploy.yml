@@ -64,7 +64,7 @@ jobs:
           --query "[?contains(name, 'wizbackup')].name | [0]" -o tsv 2>/dev/null)
         if [ -n "$TFSTATE_STORAGE_ACCOUNT" ]; then
           echo "Found storage account: $TFSTATE_STORAGE_ACCOUNT"
-          python3 scripts/download_tfstate.py "$TFSTATE_STORAGE_ACCOUNT" "${TFSTATE_CONTAINER}" ""
+          python3 scripts/download_tfstate.py \"$TFSTATE_STORAGE_ACCOUNT\" \"${TFSTATE_CONTAINER}\" \"$RESOURCE_GROUP\"
         else
           echo "No storage account found in resource group $RESOURCE_GROUP"
         fi
@@ -175,12 +175,22 @@ jobs:
         fi
 
         echo "Uploading to storage account: $TFSTATE_STORAGE_ACCOUNT"
+        # Fetch storage account key (works with subscription-level Contributor role)
+        TFSTATE_STORAGE_KEY=$(az storage account keys list \
+          --account-name "$TFSTATE_STORAGE_ACCOUNT" \
+          --resource-group "$RESOURCE_GROUP" \
+          --query "[0].value" -o tsv 2>/dev/null)
+        if [ -z "$TFSTATE_STORAGE_KEY" ]; then
+          echo "ERROR: Could not get storage account key"
+          exit 1
+        fi
         az storage blob upload \
           --account-name "$TFSTATE_STORAGE_ACCOUNT" \
+          --account-key "$TFSTATE_STORAGE_KEY" \
           --container-name "${TFSTATE_CONTAINER}" \
           --name "terraform.tfstate" \
           --file "$STATE_FILE" \
-          --auth-mode login \
+          --auth-mode key \
           --overwrite
 
         echo "TF state uploaded to Azure Blob Storage successfully"

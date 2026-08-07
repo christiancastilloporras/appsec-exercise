@@ -64,7 +64,7 @@ jobs:
           --query "[?contains(name, 'wizbackup')].name | [0]" -o tsv 2>/dev/null)
         if [ -n "$TFSTATE_STORAGE_ACCOUNT" ]; then
           echo "Found storage account: $TFSTATE_STORAGE_ACCOUNT"
-          python3 scripts/download_tfstate.py \"$TFSTATE_STORAGE_ACCOUNT\" \"${TFSTATE_CONTAINER}\" \"$RESOURCE_GROUP\"
+          python3 scripts/download_tfstate.py "$TFSTATE_STORAGE_ACCOUNT" "$TFSTATE_CONTAINER" "$RESOURCE_GROUP"
         else
           echo "No storage account found in resource group $RESOURCE_GROUP"
         fi

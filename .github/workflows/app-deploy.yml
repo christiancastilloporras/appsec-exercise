@@ -93,6 +93,7 @@ jobs:
         echo "ACR_USERNAME=$(terraform output -raw acr_username)" >> $GITHUB_ENV
         echo "ACR_PASSWORD=$(terraform output -raw acr_password)" >> $GITHUB_ENV
         # Write kubeconfig directly to file (can't use $GITHUB_ENV for multiline content)
+        mkdir -p $HOME/.kube
         terraform output -raw aks_kube_config > $HOME/.kube/config
         echo "Kubeconfig written to $HOME/.kube/config"
       shell: bash

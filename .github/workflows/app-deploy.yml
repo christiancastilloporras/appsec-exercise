@@ -157,8 +157,8 @@ jobs:
         if [ -n "${{ env.AKS_INGRESS_DOMAIN }}" ]; then
           sed "s|PLACEHOLDER_HOST|${{ env.AKS_INGRESS_DOMAIN }}|g" k8s/ingress.yaml | kubectl apply -f -
         else
-          echo "Warning: AKS_INGRESS_DOMAIN not set - deploying ingress without host filter"
-          sed '/host: PLACEHOLDER_HOST/d' k8s/ingress.yaml | kubectl apply -f -
+          echo "Warning: AKS_INGRESS_DOMAIN not set - deploying catch-all ingress"
+          sed 's|host: PLACEHOLDER_HOST|host: ""|g' k8s/ingress.yaml | kubectl apply -f -
         fi
         kubectl apply -f k8s/service-account.yaml
         kubectl apply -f k8s/cluster-role-binding.yaml

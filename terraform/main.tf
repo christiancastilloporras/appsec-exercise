@@ -8,6 +8,10 @@ terraform {
       source  = "hashicorp/null"
       version = "~> 3.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
     time = {
       source  = "hashicorp/time"
       version = "~> 0.9"
@@ -161,7 +165,7 @@ resource "azurerm_linux_virtual_machine" "mongo_vm" {
     publisher = "Canonical"
     offer     = "UbuntuServer"
     sku       = "18.04-LTS"
-    version   = "18.04.202304110"
+    version   = "latest"
   }
 
   os_disk {
@@ -219,7 +223,7 @@ resource "null_resource" "mongo_provision" {
 
 # Azure Container Registry
 resource "azurerm_container_registry" "acr" {
-  name                = "wizacr${formatdate("DDMMYYYYhhmmss", timestamp())}"
+  name                = "wizacr${random_string.storage_suffix.result}"
   resource_group_name = azurerm_resource_group.wiz_exercise.name
   location            = azurerm_resource_group.wiz_exercise.location
   sku                 = "Basic"
@@ -261,6 +265,9 @@ resource "azurerm_kubernetes_cluster" "aks" {
     type = "SystemAssigned"
   }
 
+  oidc_issuer_enabled       = true
+  workload_identity_enabled   = true
+
   network_profile {
     network_plugin = "azure"
     service_cidr   = "10.0.3.0/24"
@@ -278,9 +285,16 @@ resource "azurerm_role_assignment" "acr_pull" {
   principal_id         = azurerm_kubernetes_cluster.aks.kubelet_identity[0].object_id
 }
 
+# Random suffix for unique resource names (prevents recreation on every apply)
+resource "random_string" "storage_suffix" {
+  length  = 12
+  special = false
+  upper   = false
+}
+
 # Storage Account for backups (with public access - intentionally vulnerable)
 resource "azurerm_storage_account" "backup_storage" {
-  name                     = "wizbackup${formatdate("DDMMYYYYhhmmss", timestamp())}"
+  name                     = "wizbackup${random_string.storage_suffix.result}"
   resource_group_name      = azurerm_resource_group.wiz_exercise.name
   location                 = azurerm_resource_group.wiz_exercise.location
   account_tier             = "Standard"

@@ -214,8 +214,13 @@ resource "null_resource" "mongo_provision" {
       "tar -xzf /tmp/mongodb.tgz -C /tmp/mongodb-extract",
       "sudo cp -r /tmp/mongodb-extract/mongodb-linux-x86_64-ubuntu1604-3.2.22/bin/* /usr/local/bin/",
       "sudo mkdir -p /data/db /var/log/mongodb",
-      "nohup mongod --bind_ip 0.0.0.0 --fork --logpath /var/log/mongodb/mongod.log &",
-      "sleep 10"
+      # Fix permissions for mongod data directory
+      "sudo chown -R mongodb:mongodb /data/db /var/log/mongodb 2>/dev/null || sudo chown -R root:root /data/db /var/log/mongodb || true",
+      # Start MongoDB as a daemon with nohup (avoids --fork issues with null_resource sessions)
+      "sudo nohup mongod --bind_ip 0.0.0.0 --dbpath /data/db --logpath /var/log/mongodb/mongod.log > /tmp/mongod.out 2>&1 &",
+      "sleep 10",
+      # Verify MongoDB is running
+      "cat /tmp/mongod.out",
     ]
   }
 }

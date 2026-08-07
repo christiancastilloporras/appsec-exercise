@@ -3,10 +3,10 @@ kind: Ingress
 metadata:
   name: wiz-exercise-ingress
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
     service.beta.kubernetes.io/azure-load-balancer-internal: "false"
 spec:
-  ingressClassName: nginx
+  # AKS HTTP Application Routing uses the 'addon-http-application-routing' ingress class
+  ingressClassName: addon-http-application-routing
   rules:
   - host: wiz-exercise.westeurope.cloudapp.azure.com
     http:
@@ -14,8 +14,7 @@ spec:
       - path: /
         pathType: Prefix
         backend:
-          http:
-            service:
-              name: wiz-exercise-service
-              port:
-                number: 80
+          service:
+            name: wiz-exercise-service
+            port:
+              number: 80

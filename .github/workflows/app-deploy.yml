@@ -92,6 +92,7 @@ jobs:
         echo "ACR_NAME=$(terraform output -raw acr_login_server | cut -d'.' -f1)" >> $GITHUB_ENV
         echo "ACR_USERNAME=$(terraform output -raw acr_username)" >> $GITHUB_ENV
         echo "ACR_PASSWORD=$(terraform output -raw acr_password)" >> $GITHUB_ENV
+        echo "AKS_INGRESS_DOMAIN=$(terraform output -raw aks_ingress_domain)" >> $GITHUB_ENV
         # Write kubeconfig directly to file (can't use $GITHUB_ENV for multiline content)
         mkdir -p $HOME/.kube
         terraform output -raw aks_kube_config > $HOME/.kube/config
@@ -148,7 +149,7 @@ jobs:
         kubectl apply -f k8s/cluster-role-binding.yaml
         kubectl apply -f k8s/secrets.yaml
         kubectl apply -f k8s/service.yaml
-        kubectl apply -f k8s/ingress.yaml
+        sed "s|wiz-exercise.westeurope.cloudapp.azure.com|${{ env.AKS_INGRESS_DOMAIN }}|g" k8s/ingress.yaml | kubectl apply -f -
 
     - name: Verify Deployment
       run: |

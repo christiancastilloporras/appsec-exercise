@@ -140,8 +140,8 @@ resource "azurerm_public_ip" "mongo_pip" {
   location            = azurerm_resource_group.wiz_exercise.location
   resource_group_name = azurerm_resource_group.wiz_exercise.name
   allocation_method   = "Static"
-  # Basic SKU for compatibility with existing infra and lower cost
-  sku                 = "Basic"
+  # Standard SKU (Basic is deprecated, March 31, 2025)
+  sku                 = "Standard"
 }
 
 # Mongo VM

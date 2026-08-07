@@ -234,7 +234,7 @@ This project contains **intentionally vulnerable components** for educational/se
 | Admin credentials | Default creds | admin/admin123 |
 | Flask app | Secret key | Default value (`dev-secret-key-change-in-prod`) when unset |
 | Azure Blob | Public access | Container misconfigured with read access to all |
-| Storage TLS | Weak TLS | `min_tls_version = TLS1_0` |
+| Storage TLS | Weak TLS | `min_tls_version = TLS1_2` (still below 1.3) |
 | ACR | Admin enabled | Admin user enabled for simplicity |
 
 ### Network Security Rules
@@ -349,7 +349,8 @@ resource "azurerm_public_ip" "mongo_pip" {
   location            = azurerm_resource_group.wiz_exercise.location
   resource_group_name = azurerm_resource_group.wiz_exercise.name
   allocation_method   = "Static"
-  sku                 = "Basic"
+  # Standard SKU (Basic is deprecated, March 31, 2025)
+  sku                 = "Standard"
 }
 ```
 
@@ -474,7 +475,7 @@ kubectl create configmap wiz-app-config \
 VNet: 10.0.0.0/16
 ├── Subnet: 10.0.1.0/24 (wiz-subnet)
 │   └── MongoDB VM (Standard_B1s)
-│       ├── Public IP (Basic SKU, static)
+│       ├── Public IP (Standard SKU, static)
 │       └── NSG: SSH from *, Mongo 27017 only from AKS subnet (10.0.2.0/24)
 ├── Subnet: 10.0.2.0/24 (aks-subnet)
 │   └── AKS Cluster (1 node, Standard_B2s, K8s 1.35)

@@ -94,10 +94,18 @@ jobs:
             "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID" \
             -d "$RELEASE_DATA"
         else
-          RELEASE_ID=$(curl -X POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+          echo "Creating new release..."
+          RELEASE_RESPONSE=$(curl -s -X POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/${{ github.repository }}/releases" \
-            -d "$RELEASE_DATA" | jq -r '.id')
+            -d "$RELEASE_DATA")
+          echo "Release response: $RELEASE_RESPONSE"
+          RELEASE_ID=$(echo "$RELEASE_RESPONSE" | jq -r '.id' 2>/dev/null)
+          if [ -z "$RELEASE_ID" ] || [ "$RELEASE_ID" = "null" ]; then
+            echo "Failed to create release"
+            echo "Full response: $RELEASE_RESPONSE"
+            exit 1
+          fi
         fi
         ASSET_ID=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
           "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID/assets" | jq -r '.[] | select(.name=="terraform.tfstate") | .id' || true)

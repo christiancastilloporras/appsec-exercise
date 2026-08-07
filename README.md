@@ -125,11 +125,11 @@ docker push <acr-name>.azurecr.io/wiz-exercise:latest
 kubectl apply -f k8s/
 ```
 
-### Step 3: Seed the Database
+### Seed the Database
 
 ```bash
 cd terraform
-MONGO_IP=$(terraform output -raw mongo_vm_public_ip)
+MONGO_IP=$(terraform output -raw mongo_vm_private_ip)
 cd ..
 python3 seed_db.py --host $MONGO_IP
 ```
@@ -230,7 +230,7 @@ This project contains **intentionally vulnerable components** for educational/se
 |-----------|--------------|---------|
 | MongoDB 3.2.22 | CVE-2018-9161 | Unauthenticated RCE via MONGODB-CR authentication |
 | MongoDB | Default binding | Binds to 0.0.0.0 (all interfaces) |
-| MongoDB | Public port | Port 27017 exposed via public IP |
+| MongoDB | Public port | Port 27017 exposed via public IP (SSH) but app connects via private IP |
 | Admin credentials | Default creds | admin/admin123 |
 | Flask app | Secret key | Default value (`dev-secret-key-change-in-prod`) when unset |
 | Azure Blob | Public access | Container misconfigured with read access to all |
@@ -364,7 +364,7 @@ MongoDB is installed post-boot via `null_resource.mongo_provision` (see `main.tf
 
 The daily backup script (`scripts/backup-mongo.sh`) performs:
 
-1. Connects to MongoDB via `mongodump` over public IP
+1. Connects to MongoDB via `mongodump` over private IP (or public IP for external scripts)
 2. Creates a compressed archive with timestamp
 3. Uploads to Azure Blob Storage (publicly accessible)
 4. Verifies upload completion
@@ -448,7 +448,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
 
 ### ConfigMap Pattern (MongoDB IP Injection)
 
-The MongoDB VM public IP is exposed dynamically via Terraform outputs and injected into the Flask app Kubernetes deployment via a ConfigMap:
+The MongoDB VM private IP is exposed dynamically via Terraform outputs and injected into the Flask app Kubernetes deployment via a ConfigMap:
 
 ```yaml
 # k8s/configmap.yaml
@@ -457,11 +457,11 @@ kind: ConfigMap
 metadata:
   name: wiz-app-config
 data:
-  MONGO_URI: "mongodb://<mongo_vm_public_ip>:27017/admin-app"
+  MONGO_URI: "mongodb://<mongo_vm_private_ip>:27017/admin-app"
   SECRET_KEY: "wiz-secret-key"
 ```
 
-The `app-deploy.yml` workflow dynamically generates the ConfigMap after Terraform apply:
+The `app-deploy.yml` workflow dynamically captures the private IP after Terraform apply:
 ```bash
 kubectl create configmap wiz-app-config \
   --from-literal=MONGO_URI="mongodb://${MONGO_IP}:27017/admin-app" \

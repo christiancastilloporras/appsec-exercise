@@ -22,7 +22,7 @@ Internet
 - **Frontend**: Flask web app (Docker container) with admin login
 - **Backend**: MongoDB 3.2.22 (vulnerable version) on Azure VM
 - **Container Registry**: Azure Container Registry (ACR)
-- **Orchestration**: AKS cluster with Application Routing Add-on (NGINX-based)
+- **Orchestration**: AKS cluster with Application Routing Add-on (HTTP/S via `webapprouting.kubernetes.azure.com`)
 - **IaC**: Terraform for all Azure infrastructure
 - **Backups**: Daily MongoDB dumps to Azure Blob Storage (publicly accessible)
 
@@ -274,14 +274,14 @@ The Azure Storage Account is intentionally misconfigured with public access enab
 
 ```hcl
 resource "azurerm_storage_account" "backup_storage" {
-  name                     = "wizbackup${formatdate("DDMMYYYYhhmmss", timestamp())}"
+  name                     = "wizbackup${random_string.storage_suffix.result}"
   account_tier             = "Standard"
   account_replication_type  = "LRS"
   account_kind             = "StorageV2"
   
   # Intentionally vulnerable: Allow public access to blob
   public_network_access_enabled = true
-  min_tls_version                = "TLS1_0"
+  min_tls_version                = "TLS1_2"
   network_rules {
     default_action = "Allow"
     bypass         = ["AzureServices"]
@@ -304,7 +304,7 @@ resource "azurerm_storage_container" "tfstate_container" {
 | Property | Value | Risk |
 |--------|-------|------|
 | `public_network_access_enabled` | `true` | Public network access allowed |
-| `min_tls_version` | `TLS1_0` | Weak TLS protocol (deprecated) |
+| `min_tls_version` | `TLS1_2` | Weak TLS protocol (still below 1.3) |
 | `container_access_type` | `blob` | Anonymous read access to all blobs |
 | `default_action` | `Allow` | No network restrictions |
 
@@ -316,6 +316,7 @@ resource "azurerm_linux_virtual_machine" "mongo_vm" {
   size                = var.mongo_vm_size
   admin_username      = var.vm_admin_username
   admin_password      = var.vm_admin_password
+  disable_password_authentication = false
   
   # Managed Identity for Azure resource access
   identity {
@@ -327,23 +328,36 @@ resource "azurerm_linux_virtual_machine" "mongo_vm" {
   
   source_image_reference {
     publisher = "Canonical"
-    offer     = "0001-com-ubuntu-server-jammy"
-    sku       = "22_04-lts"
+    offer     = "UbuntuServer"
+    sku       = "18.04-LTS"
     version   = "latest"
   }
   
-  # Provisions MongoDB 3.2.22 (vulnerable version)
-  provisioner "remote-exec" {
-    inline = [
-      "wget -qO - https://www.mongodb.org/static/pgp/server-3.2.asc | sudo apt-key add -",
-      "echo 'deb http://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/3.2 ubuntu' | ...",
-      "sudo apt-get install -y mongodb-org=${var.mongo_version}",
-      "sudo systemctl start mongod",
-      "sudo systemctl enable mongod"
-    ]
+  os_disk {
+    name              = "mongo-os-disk"
+    caching           = "ReadWrite"
+    storage_account_type = "Standard_LRS"
   }
+  
+  # Provisions MongoDB 3.2.22 (vulnerable version)
+  # Uses binary tarball download rather than apt repo
+  # MongoDB 3.2.22 does not support apt on Ubuntu 18.04+
+}
+
+resource "azurerm_public_ip" "mongo_pip" {
+  name                = "mongo-pip"
+  location            = azurerm_resource_group.wiz_exercise.location
+  resource_group_name = azurerm_resource_group.wiz_exercise.name
+  allocation_method   = "Static"
+  sku                 = "Basic"
 }
 ```
+
+MongoDB is installed post-boot via `null_resource.mongo_provision` (see `main.tf`):
+- Downloads MongoDB 3.2.22 Linux x86_64 tarball
+- Extracts and copies binaries to `/usr/local/bin/`
+- Binds to `0.0.0.0:27017` (all interfaces)
+- Forks as background process with logging to `/var/log/mongodb/`
 
 ### Backup Script
 
@@ -381,6 +395,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
   location            = var.location
   resource_group_name = azurerm_resource_group.wiz_exercise.name
   dns_prefix          = "wizaks"
+  kubernetes_version  = "1.35"
   
   default_node_pool {
     name       = "default"
@@ -392,12 +407,15 @@ resource "azurerm_kubernetes_cluster" "aks" {
   identity {
     type = "SystemAssigned"
   }
-
-  # Enable Application Routing add-on (NGINX-based, replaces deprecated HTTP App Routing)
+  
+  oidc_issuer_enabled       = true
+  workload_identity_enabled   = true
+  
+  # Enable Application Routing Add-on (replaces deprecated HTTP App Routing)
   web_app_routing {
     dns_zone_ids = []  # Empty = AKS auto-creates DNS zone
   }
-
+  
   network_profile {
     network_plugin = "azure"
     service_cidr   = "10.0.3.0/24"
@@ -410,16 +428,22 @@ resource "azurerm_kubernetes_cluster" "aks" {
 | Output | Description |
 |--------|-------------|
 | `mongo_vm_public_ip` | Public IP of MongoDB VM |
-| `aks_ingress_endpoint` | Ingress URL for the Flask app |
+| `mongo_connection_string` | MongoDB connection string (`mongodb://<IP>:27017/admin-app`) |
+| `mongo_vm_private_ip` | Private IP of MongoDB VM |
+| `mongo_vm_identity_principal_id` | Managed Identity principal ID for Mongo VM |
+| `aks_ingress_endpoint` | Ingress URL (`https://<fqdn>`) for the Flask app |
+| `aks_ingress_fqdn` | FQDN for the ingress - stable for cluster lifetime |
 | `acr_login_server` | Azure Container Registry login server |
 | `acr_username` | ACR admin username (if enabled) |
 | `acr_password` | ACR admin password (if enabled) |
 | `aks_kube_config` | Raw kubeconfig for AKS cluster access |
+| `aks_cluster_name` | AKS cluster name |
 | `storage_account_name` | Storage account name for backups and TF state |
-|| `storage_container_name` | Blob container name for backups (`mongo-backups`) |
-|| `storage_blob_access_key` | Storage access key |
-|| `tfstate_container_name` | Blob container name for TF state (`tfstate`, private) |
-|| `tfstate_storage_url` | Full URL for TF state storage |
+| `storage_container_name` | Blob container name for backups (`mongo-backups`) |
+| `storage_primary_blob_endpoint` | Storage account blob endpoint URL |
+| `storage_blob_access_key` | Storage access key |
+| `tfstate_container_name` | Blob container name for TF state (`tfstate`, private) |
+| `tfstate_storage_url` | Full URL for TF state storage |
 
 ### ConfigMap Pattern (MongoDB IP Injection)
 
@@ -448,14 +472,13 @@ kubectl create configmap wiz-app-config \
 
 ```
 VNet: 10.0.0.0/16
-├── Subnet: 10.0.1.0/24 (webapp)
+├── Subnet: 10.0.1.0/24 (wiz-subnet)
 │   └── MongoDB VM (Standard_B1s)
-│       ├── Public IP (SSH open to world)
-│       └── NSG: SSH from *, Mongo 27017 only from AKS subnet
-├── Subnet: 10.0.2.0/24 (aks)
-│   └── AKS Cluster (1 node, Standard_B2s)
-│       └── Ingress: LoadBalancer (public)
-│           └── NGINX Ingress Controller
+│       ├── Public IP (Basic SKU, static)
+│       └── NSG: SSH from *, Mongo 27017 only from AKS subnet (10.0.2.0/24)
+├── Subnet: 10.0.2.0/24 (aks-subnet)
+│   └── AKS Cluster (1 node, Standard_B2s, K8s 1.35)
+│       └── Application Routing Add-on (ingress via webapprouting.kubernetes.azure.com)
 └── Service CIDR: 10.0.3.0/24
 ```
 

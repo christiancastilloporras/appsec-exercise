@@ -218,9 +218,11 @@ resource "null_resource" "mongo_provision" {
       "sudo chown -R $USER:$USER /data/db /var/log/mongodb",
       # Start MongoDB as the login user (azureuser) via nohup
       "nohup mongod --bind_ip 0.0.0.0 --dbpath /data/db --logpath /var/log/mongodb/mongod.log > /tmp/mongod.out 2>&1 &",
-      "sleep 10",
-      "for i in $(seq 1 15); do bash -c 'echo > /dev/tcp/127.0.0.1/27017' 2>/dev/null && break; sleep 2; done",
-      "bash -c 'echo > /dev/tcp/127.0.0.1/27017' && echo '✅ MongoDB is listening on 127.0.0.1:27017' || { echo '❌ MongoDB failed to start'; cat /tmp/mongod.out; exit 1; }",
+      "sleep 15",  # Give mongod more time to start
+      "bash -c 'until ss -nat | grep -q :27017; do echo \"��⏳ Waiting for MongoDB...\" && sleep 2; done'",
+      "echo '��✅ MongoDB is running on port 27017'",
+      # Verify basic connectivity
+      "bash -c 'echo > /dev/tcp/127.0.0.1/27017' && echo '��✅ TCP connection successful or already connected'"
     ]
   }
 }

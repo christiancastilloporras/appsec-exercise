@@ -214,7 +214,9 @@ resource "null_resource" "mongo_provision" {
       "tar -xzf /tmp/mongodb.tgz -C /tmp/mongodb-extract",
       "sudo cp -r /tmp/mongodb-extract/mongodb-linux-x86_64-ubuntu1604-3.2.22/bin/* /usr/local/bin/",
       "sudo mkdir -p /data/db /var/log/mongodb",
-      "sudo chown -R mongodb:mongodb /data/db /var/log/mongodb 2>/dev/null || true",
+      # Ensure azureuser (the SSH login user) owns the data directory
+      "sudo chown -R $USER:$USER /data/db /var/log/mongodb",
+      # Start MongoDB as the login user (azureuser) via nohup
       "nohup mongod --bind_ip 0.0.0.0 --dbpath /data/db --logpath /var/log/mongodb/mongod.log > /tmp/mongod.out 2>&1 &",
       "sleep 10",
       "for i in $(seq 1 15); do bash -c 'echo > /dev/tcp/127.0.0.1/27017' 2>/dev/null && break; sleep 2; done",

@@ -214,16 +214,11 @@ resource "null_resource" "mongo_provision" {
       "tar -xzf /tmp/mongodb.tgz -C /tmp/mongodb-extract",
       "sudo cp -r /tmp/mongodb-extract/mongodb-linux-x86_64-ubuntu1604-3.2.22/bin/* /usr/local/bin/",
       "sudo mkdir -p /data/db /var/log/mongodb",
-      # Fix permissions for mongod data directory
-      "sudo chown -R mongodb:mongodb /data/db /var/log/mongodb 2>/dev/null || sudo chown -R root:root /data/db /var/log/mongodb || true",
-      # Start MongoDB as a daemon with nohup (avoids --fork issues with null_resource sessions)
-      "sudo nohup mongod --bind_ip 0.0.0.0 --dbpath /data/db --logpath /var/log/mongodb/mongod.log > /tmp/mongod.out 2>&1 &",
+      "sudo chown -R mongodb:mongodb /data/db /var/log/mongodb 2>/dev/null || true",
+      "nohup mongod --bind_ip 0.0.0.0 --dbpath /data/db --logpath /var/log/mongodb/mongod.log > /tmp/mongod.out 2>&1 &",
       "sleep 10",
-      # Verify MongoDB is running and accepting connections on 27017
-      # Using /dev/tcp instead of nc (may not be installed), retry for 30s
-      "for i in $(seq 1 15); do if bash -c 'echo > /dev/tcp/0.0.0.0/27017' 2>/dev/null; then echo '✅ MongoDB is listening on 27017'; break; else echo '⏳ Waiting for MongoDB to start... (attempt '$i'/15)'; sleep 2; fi; done",
-      # Double-check: try a mongo ping command
-      "bash -c 'echo > /dev/tcp/0.0.0.0/27017' && echo '✅ Connection to 27017 successful' || { echo '❌ Connection to 27017 failed'; echo '--- mongod.out ---'; cat /tmp/mongod.out; exit 1; }",
+      "for i in $(seq 1 15); do bash -c 'echo > /dev/tcp/127.0.0.1/27017' 2>/dev/null && break; sleep 2; done",
+      "bash -c 'echo > /dev/tcp/127.0.0.1/27017' && echo '✅ MongoDB is listening on 127.0.0.1:27017' || { echo '❌ MongoDB failed to start'; cat /tmp/mongod.out; exit 1; }",
     ]
   }
 }

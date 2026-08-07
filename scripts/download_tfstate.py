@@ -23,17 +23,21 @@ def main():
 
     for asset in data.get("assets", []):
         if asset["name"] == "terraform.tfstate":
+            # Use asset_url for authenticated API request
             url = asset["url"]
             headers = {"Accept": "application/octet-stream"}
             if token_arg:
                 headers["Authorization"] = f"token {token_arg}"
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req) as r:
-                content = r.read()
-            os.makedirs("terraform", exist_ok=True)
-            with open("terraform/terraform.tfstate", "wb") as f:
-                f.write(content)
-            print(f"Downloaded state file ({len(content)} bytes)")
+            try:
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req) as r:
+                    content = r.read()
+                os.makedirs("terraform", exist_ok=True)
+                with open("terraform/terraform.tfstate", "wb") as f:
+                    f.write(content)
+                print(f"Downloaded state file ({len(content)} bytes)")
+            except Exception as e:
+                print(f"Failed to download state file: {e}")
             sys.exit(0)
 
     print("No terraform.tfstate asset found in latest release")

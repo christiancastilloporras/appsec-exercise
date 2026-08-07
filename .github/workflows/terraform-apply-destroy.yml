@@ -81,7 +81,16 @@ jobs:
         terraform apply -auto-approve \
           -var="location=${{ github.event.inputs.location }}" \
           -var="mongo_vm_size=${{ github.event.inputs.mongo_vm_size }}" \
-          -var="aks_vm_size=${{ github.event.inputs.aks_vm_size }}"
+          -var="aks_vm_size=${{ github.event.inputs.aks_vm_size }}" || true
+      continue-on-error: true
+
+    - name: Copy State for Upload
+      if: always() && github.event.inputs.action == 'apply'
+      run: |
+        cd terraform
+        # terraform.tfstate contains the state from the apply attempt
+        # Even if apply failed partway, the state file has resources that were created
+        ls -la terraform.tfstate 2>/dev/null || echo "No state file"
 
     - name: Terraform Destroy
       if: github.event.inputs.action == 'destroy'

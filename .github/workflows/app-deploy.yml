@@ -136,7 +136,7 @@ jobs:
         echo "App deployed successfully with tag: ${{ github.event.inputs.image_tag || 'latest' }}"
 
     - name: Upload TF State to Release
-      if: success()
+      if: always()
       run: |
         RELEASE_TAG="tf-state"
         RELEASE_DATA='{tag_name: "tf-state", name: "Terraform State", body: "TF State file for wiz-exercise", target_commitish: "main", draft: false, prerelease: false}'

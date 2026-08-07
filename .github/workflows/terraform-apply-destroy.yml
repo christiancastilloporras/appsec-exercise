@@ -93,7 +93,7 @@ jobs:
           -var="aks_vm_size=${{ github.event.inputs.aks_vm_size }}"
 
     - name: Upload TF State to Release
-      if: success() && github.event.inputs.action == 'apply'
+      if: always() && github.event.inputs.action == 'apply'
       run: |
         # Create or update a release with the state file
         RELEASE_TAG="tf-state"

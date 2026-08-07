@@ -176,12 +176,13 @@ resource "azurerm_linux_virtual_machine" "mongo_vm" {
 
 # Separate resource to provision MongoDB after VM + IP are ready
 # Add a time_sleep to give VM time to boot and SSH to become available
+# Increased to 120s to ensure public IP is allocated and VM is ready for SSH
 resource "time_sleep" "mongo_wait" {
   depends_on = [
     azurerm_linux_virtual_machine.mongo_vm,
     azurerm_public_ip.mongo_pip
   ]
-  create_duration = "60s"
+  create_duration = "120s"
 }
 
 resource "null_resource" "mongo_provision" {
@@ -202,7 +203,7 @@ resource "null_resource" "mongo_provision" {
   provisioner "remote-exec" {
     inline = [
       "sleep 30",
-      "curl -fsSL https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu1604-3.2.22.tgz -o /tmp/mongodb.tgz",
+      "curl -fsSL https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu1604-3.2.22.tgz -o /tmp/mongodb.tgz --retry 3 --retry-delay 5",
       "mkdir -p /tmp/mongodb-extract",
       "tar -xzf /tmp/mongodb.tgz -C /tmp/mongodb-extract",
       "sudo cp -r /tmp/mongodb-extract/mongodb-linux-x86_64-ubuntu1604-3.2.22/bin/* /usr/local/bin/",

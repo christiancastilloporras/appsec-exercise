@@ -116,7 +116,7 @@ jobs:
         for rg in $(az group list --query "[?contains(name, 'wiz-exercise')].name" -o tsv); do
           if [ -n "$rg" ]; then
             echo "Waiting for resource group $rg deletion..."
-            az group wait --name "$rg" --no-wait --timeout 600 || echo "Resource group $rg may have already been deleted or timeout"
+            az group wait --name "$rg" --timeout 600 || echo "Resource group $rg may have already been deleted or timeout"
           fi
         done
         echo "Azure CLI cleanup completed."

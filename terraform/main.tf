@@ -268,9 +268,6 @@ resource "azurerm_kubernetes_cluster" "aks" {
   oidc_issuer_enabled       = true
   workload_identity_enabled   = true
 
-  # Enable HTTP Application Routing addon for ingress support
-  http_application_routing_enabled = true
-
   network_profile {
     network_plugin = "azure"
     service_cidr   = "10.0.3.0/24"

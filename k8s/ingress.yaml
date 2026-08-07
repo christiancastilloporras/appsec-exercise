@@ -5,8 +5,7 @@ metadata:
   annotations:
     service.beta.kubernetes.io/azure-load-balancer-internal: "false"
 spec:
-  # AKS HTTP Application Routing uses the 'addon-http-application-routing' ingress class
-  ingressClassName: addon-http-application-routing
+  ingressClassName: nginx
   rules:
   - host: wiz-exercise.westeurope.cloudapp.azure.com
     http:

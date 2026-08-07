@@ -40,11 +40,6 @@ output "aks_ingress_endpoint" {
   value = "https://${azurerm_kubernetes_cluster.aks.fqdn}"
 }
 
-output "aks_ingress_domain" {
-  value = azurerm_kubernetes_cluster.aks.http_application_routing_zone_name
-  description = "DNS zone for HTTP application routing (ingress)"
-}
-
 output "storage_account_name" {
   value = azurerm_storage_account.backup_storage.name
 }

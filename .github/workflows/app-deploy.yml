@@ -92,7 +92,6 @@ jobs:
         echo "ACR_NAME=$(terraform output -raw acr_login_server | cut -d'.' -f1)" >> $GITHUB_ENV
         echo "ACR_USERNAME=$(terraform output -raw acr_username)" >> $GITHUB_ENV
         echo "ACR_PASSWORD=$(terraform output -raw acr_password)" >> $GITHUB_ENV
-        echo "AKS_INGRESS_DOMAIN=$(terraform output -raw aks_ingress_domain)" >> $GITHUB_ENV
         # Write kubeconfig directly to file (can't use $GITHUB_ENV for multiline content)
         mkdir -p $HOME/.kube
         terraform output -raw aks_kube_config > $HOME/.kube/config
@@ -114,8 +113,15 @@ jobs:
         docker push "$FULL_IMAGE"
         echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
         echo "IMAGE_FULL=$FULL_IMAGE" >> $GITHUB_ENV
-    - name: Install kubectl
+    - name: Install kubectl and Helm
       uses: azure/setup-kubectl@v4
+      with:
+        version: 'v1.28.0'
+
+    - name: Install Helm
+      uses: azure/setup-helm@v4
+      with:
+        version: v3.12.0
     - name: Set up Kubeconfig (already written above)
       run: |
         chmod 600 $HOME/.kube/config
@@ -142,6 +148,18 @@ jobs:
           --from-literal=SECRET_KEY="wiz-secret-key" \
           --dry-run=client -o yaml | kubectl apply -f -
 
+    - name: Install NGINX Ingress Controller
+      run: |
+        helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+        helm repo update
+        helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+          --namespace ingress-nginx --create-namespace \
+          --set controller.replicaCount=1 \
+          --wait --timeout 5m
+        echo "NGINX ingress controller installed"
+      env:
+        KUBECONFIG: $HOME/.kube/config
+
     - name: Deploy K8s Manifests
       run: |
         sed "s|PLACEHOLDER_ACR|${{ env.ACR_NAME }}|g; s|PLACEHOLDER_TAG|${{ env.IMAGE_TAG }}|g" k8s/deployment.yaml | kubectl apply -f -
@@ -149,7 +167,7 @@ jobs:
         kubectl apply -f k8s/cluster-role-binding.yaml
         kubectl apply -f k8s/secrets.yaml
         kubectl apply -f k8s/service.yaml
-        sed "s|wiz-exercise.westeurope.cloudapp.azure.com|${{ env.AKS_INGRESS_DOMAIN }}|g" k8s/ingress.yaml | kubectl apply -f -
+        kubectl apply -f k8s/ingress.yaml
 
     - name: Verify Deployment
       run: |

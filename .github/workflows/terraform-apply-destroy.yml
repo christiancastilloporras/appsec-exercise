@@ -107,13 +107,19 @@ jobs:
           echo "Attempting Azure CLI cleanup..."
           # List all resource groups matching the naming pattern
           az group list --query "[?contains(name, 'wiz-exercise')].name" -o tsv | while read rg; do
-            if [ -n "$rg" ]; then
-              echo "Deleting resource group: $rg"
-              az group delete --name "$rg" --yes --no-wait
-            fi
-          done
-          echo "Azure CLI cleanup initiated. Check Azure portal for completion."
-          exit 0
+          if [ -n "$rg" ]; then
+            echo "Deleting resource group: $rg"
+            az group delete --name "$rg" --yes --no-wait
+          fi
+        done
+        echo "Azure CLI cleanup initiated. Waiting for deletion to complete..."
+        for rg in $(az group list --query "[?contains(name, 'wiz-exercise')].name" -o tsv); do
+          if [ -n "$rg" ]; then
+            echo "Waiting for resource group $rg deletion..."
+            az group wait --name "$rg" --no-wait --timeout 600 || echo "Resource group $rg may have already been deleted or timeout"
+          fi
+        done
+        echo "Azure CLI cleanup completed."
         fi
         terraform destroy -auto-approve \
           -var="location=${{ github.event.inputs.location }}" \

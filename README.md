@@ -218,7 +218,7 @@ All workflows use actions compatible with **Node.js 24** (GitHub's latest):
 || `hashicorp/setup-terraform` | v4 |
 || `azure/login` | v3 |
 || `docker/setup-buildx-action` | v4 |
-|| `azure/setup-kubectl` | v4 |
+||| `azure/setup-kubectl` | v5 |
 
 ## Security Warning
 

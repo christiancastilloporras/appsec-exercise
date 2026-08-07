@@ -116,7 +116,7 @@ jobs:
         echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
         echo "IMAGE_FULL=$FULL_IMAGE" >> $GITHUB_ENV
     - name: Install kubectl
-      uses: azure/setup-kubectl@v4
+      uses: azure/setup-kubectl@v5
 
     - name: Set up Kubeconfig
       run: |

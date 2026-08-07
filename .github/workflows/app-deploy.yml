@@ -88,7 +88,8 @@ jobs:
     - name: Get Terraform Outputs
       run: |
         cd terraform
-        echo "MONGO_IP=$(terraform output -raw mongo_vm_public_ip)" >> $GITHUB_ENV
+        # Use private IP for Mongo connection (more secure, uses VNet peering)
+        echo "MONGO_IP=$(terraform output -raw mongo_vm_private_ip)" >> $GITHUB_ENV
         echo "ACR_NAME=$(terraform output -raw acr_login_server | cut -d'.' -f1)" >> $GITHUB_ENV
         echo "ACR_USERNAME=$(terraform output -raw acr_username)" >> $GITHUB_ENV
         echo "ACR_PASSWORD=$(terraform output -raw acr_password)" >> $GITHUB_ENV

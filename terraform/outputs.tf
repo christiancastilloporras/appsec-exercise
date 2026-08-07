@@ -3,7 +3,7 @@ output "mongo_vm_public_ip" {
 }
 
 output "mongo_connection_string" {
-  value = "mongodb://${azurerm_public_ip.mongo_pip.ip_address}:27017/admin-app"
+  value = "mongodb://${azurerm_network_interface.mongo_nic.private_ip_address}:27017/admin-app"
 }
 
 output "mongo_vm_private_ip" {

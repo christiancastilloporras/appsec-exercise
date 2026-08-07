@@ -114,7 +114,7 @@ resource "azurerm_network_security_group" "mongo_nsg" {
     destination_address_prefix = "*"
   }
 
-  # Allow Mongo (27017) from AKS cluster subnet (internal traffic)
+  # Allow Mongo (27017) from AKS cluster subnet only (internal traffic)
   security_rule {
     name                       = "Mongo-AKS-Only"
     priority                   = 1010
@@ -124,19 +124,6 @@ resource "azurerm_network_security_group" "mongo_nsg" {
     source_port_range          = "*"
     destination_port_range     = "27017"
     source_address_prefix      = azurerm_subnet.aks_subnet.address_prefixes[0]
-    destination_address_prefix = "*"
-  }
-
-  # Allow Mongo (27017) from anywhere - pods connect via public IP
-  security_rule {
-    name                       = "Mongo-Public-IP"
-    priority                   = 1020
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "27017"
-    source_address_prefix      = "*"
     destination_address_prefix = "*"
   }
 }

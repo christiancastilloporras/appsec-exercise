@@ -113,15 +113,9 @@ jobs:
         docker push "$FULL_IMAGE"
         echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
         echo "IMAGE_FULL=$FULL_IMAGE" >> $GITHUB_ENV
-    - name: Install kubectl and Helm
+    - name: Install kubectl
       uses: azure/setup-kubectl@v4
-      with:
-        version: 'v1.28.0'
 
-    - name: Install Helm
-      uses: azure/setup-helm@v4
-      with:
-        version: v3.12.0
     - name: Set up Kubeconfig (already written above)
       run: |
         chmod 600 $HOME/.kube/config
@@ -147,18 +141,6 @@ jobs:
           --from-literal=MONGO_URI="mongodb://${{ env.MONGO_IP }}:27017/admin-app" \
           --from-literal=SECRET_KEY="wiz-secret-key" \
           --dry-run=client -o yaml | kubectl apply -f -
-
-    - name: Install NGINX Ingress Controller
-      run: |
-        helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-        helm repo update
-        helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-          --namespace ingress-nginx --create-namespace \
-          --set controller.replicaCount=1 \
-          --wait --timeout 5m
-        echo "NGINX ingress controller installed"
-      env:
-        KUBECONFIG: $HOME/.kube/config
 
     - name: Deploy K8s Manifests
       run: |

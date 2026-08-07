@@ -2,7 +2,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = ">= 3.0, < 4.0"
+      version = ">= 4.0, < 5.0"
     }
     null = {
       source  = "hashicorp/null"
@@ -253,6 +253,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
   location            = azurerm_resource_group.wiz_exercise.location
   resource_group_name = azurerm_resource_group.wiz_exercise.name
   dns_prefix          = "wizaks"
+  kubernetes_version  = "1.35"
 
   default_node_pool {
     name       = "default"
@@ -267,6 +268,12 @@ resource "azurerm_kubernetes_cluster" "aks" {
 
   oidc_issuer_enabled       = true
   workload_identity_enabled   = true
+
+  # Enable Application Routing add-on (replaces deprecated http_application_routing)
+  web_app_routing {
+    dns_zone_ids = []
+
+  }
 
   network_profile {
     network_plugin = "azure"
@@ -303,7 +310,7 @@ resource "azurerm_storage_account" "backup_storage" {
 
   # Intentionally vulnerable: Allow public access to blob
   public_network_access_enabled = true
-  min_tls_version                = "TLS1_0"
+  min_tls_version                = "TLS1_2"
 
   network_rules {
     default_action = "Allow"
@@ -314,13 +321,13 @@ resource "azurerm_storage_account" "backup_storage" {
 # Blob container with public access (vulnerable misconfiguration)
 resource "azurerm_storage_container" "backup_container" {
   name                  = "mongo-backups"
-  storage_account_name  = azurerm_storage_account.backup_storage.name
+  storage_account_id    = azurerm_storage_account.backup_storage.id
   container_access_type = "blob"  # "blob" = anonymous read access to blobs (vulnerable)
 }
 
 # Private container for Terraform state files
 resource "azurerm_storage_container" "tfstate_container" {
   name                  = "tfstate"
-  storage_account_name  = azurerm_storage_account.backup_storage.name
+  storage_account_id    = azurerm_storage_account.backup_storage.id
   container_access_type = "private"
 }

@@ -5,10 +5,10 @@ metadata:
   annotations:
     service.beta.kubernetes.io/azure-load-balancer-internal: "false"
 spec:
-  ingressClassName: nginx
+  # AKS Application Routing add-on uses this class name
+  ingressClassName: webapprouting.kubernetes.azure.com
   rules:
-  - host: wiz-exercise.westeurope.cloudapp.azure.com
-    http:
+  - http:
       paths:
       - path: /
         pathType: Prefix

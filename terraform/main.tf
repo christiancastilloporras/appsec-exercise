@@ -219,8 +219,11 @@ resource "null_resource" "mongo_provision" {
       # Start MongoDB as a daemon with nohup (avoids --fork issues with null_resource sessions)
       "sudo nohup mongod --bind_ip 0.0.0.0 --dbpath /data/db --logpath /var/log/mongodb/mongod.log > /tmp/mongod.out 2>&1 &",
       "sleep 10",
-      # Verify MongoDB is running
-      "cat /tmp/mongod.out",
+      # Verify MongoDB is running and accepting connections on 27017
+      # Using /dev/tcp instead of nc (may not be installed), retry for 30s
+      "for i in $(seq 1 15); do if bash -c 'echo > /dev/tcp/0.0.0.0/27017' 2>/dev/null; then echo '✅ MongoDB is listening on 27017'; break; else echo '⏳ Waiting for MongoDB to start... (attempt '$i'/15)'; sleep 2; fi; done",
+      # Double-check: try a mongo ping command
+      "bash -c 'echo > /dev/tcp/0.0.0.0/27017' && echo '✅ Connection to 27017 successful' || { echo '❌ Connection to 27017 failed'; echo '--- mongod.out ---'; cat /tmp/mongod.out; exit 1; }",
     ]
   }
 }

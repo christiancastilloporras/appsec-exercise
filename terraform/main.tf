@@ -8,6 +8,10 @@ terraform {
       source  = "hashicorp/null"
       version = "~> 3.0"
     }
+    time = {
+      source  = "hashicorp/time"
+      version = "~> 0.9"
+    }
   }
 }
 
@@ -131,7 +135,7 @@ resource "azurerm_public_ip" "mongo_pip" {
   name                = "mongo-pip"
   location            = azurerm_resource_group.wiz_exercise.location
   resource_group_name = azurerm_resource_group.wiz_exercise.name
-  allocation_method   = "Dynamic"
+  allocation_method   = "Static"
 }
 
 # Mongo VM
@@ -171,10 +175,20 @@ resource "azurerm_linux_virtual_machine" "mongo_vm" {
 }
 
 # Separate resource to provision MongoDB after VM + IP are ready
-resource "null_resource" "mongo_provision" {
+# Add a time_sleep to give VM time to boot and SSH to become available
+resource "time_sleep" "mongo_wait" {
   depends_on = [
     azurerm_linux_virtual_machine.mongo_vm,
     azurerm_public_ip.mongo_pip
+  ]
+  create_duration = "60s"
+}
+
+resource "null_resource" "mongo_provision" {
+  depends_on = [
+    azurerm_linux_virtual_machine.mongo_vm,
+    azurerm_public_ip.mongo_pip,
+    time_sleep.mongo_wait
   ]
 
   connection {

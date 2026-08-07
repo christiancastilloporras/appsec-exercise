@@ -146,7 +146,7 @@ jobs:
       if: always()
       run: |
         RELEASE_TAG="tf-state"
-        RELEASE_DATA='{tag_name: "tf-state", name: "Terraform State", body: "TF State file for wiz-exercise", target_commitish: "main", draft: false, prerelease: false}'
+        RELEASE_DATA=$(echo '{"tag_name":"tf-state","name":"Terraform State","body":"TF State file for wiz-exercise","target_commitish":"main","draft":false,"prerelease":false}')
         
         # Check if state file exists before uploading
         if [ ! -f terraform/terraform.tfstate ]; then

@@ -3,12 +3,16 @@ kind: Ingress
 metadata:
   name: wiz-exercise-ingress
   annotations:
-    service.beta.kubernetes.io/azure-load-balancer-internal: "false"
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
 spec:
-  ingressClassName: webapprouting.kubernetes.azure.com
+  ingressClassName: webapprouting
+  tls:
+  - hosts:
+    - app.cloudguardian.xyz
+    secretName: tls-origin-cert
   rules:
-  - http:
+  - host: app.cloudguardian.xyz
+    http:
       paths:
       - path: /
         pathType: Prefix

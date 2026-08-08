@@ -354,25 +354,30 @@ This project contains **intentionally vulnerable components** for educational/se
 
 ### AKS Cluster Configuration
 
-**Architecture reverted to original (no Cloudflare dependency):**
-- Flask app exposed directly via Azure Load Balancer (public)
-- AKS Application Routing ingress with catch-all hostname
-- No Cloudflare proxy/WAF dependency for basic access
+### Architecture (Simplified - Single Load Balancer)
 
-**Service (public):**
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  annotations:
-    service.beta.kubernetes.io/azure-load-balancer-internal: "false"
-spec:
-  type: LoadBalancer
+```
+Internet
+   ↓
+[AKS Application Routing (nginx controller)]
+   ↓ (ClusterIP Service)
+[Flask App Pod (port 5000)]
+   ↓
+[MongoDB 3.2.22 VM (private IP)]
 ```
 
-The service creates a public Azure Load Balancer. The ingress routes traffic to the Flask service.
+**Components:**
+| Component | Type | Managed By |
+|---|---|---|
+| `external-nginx` | LoadBalancer (external IP) | AKS Web App Routing addon (auto-created) |
+| `wiz-exercise-ingress` | Ingress (`webapprouting` class) | Your workflow |
+| `wiz-exercise-service` | ClusterIP (internal only) | Your workflow |
+| `wiz-exercise-app` | Deployment/Pod | Your workflow |
 
-No Cloudflare DNS configuration required for basic app access.
+**Key change:** Service changed from `LoadBalancer` → `ClusterIP`. The single external LoadBalancer is provided by AKS Application Routing addon, which routes to your ingress, which routes to your ClusterIP service.
+
+**Before:** 2 LoadBalancers (service LB + addon nginx LB)
+**Now:** 1 LoadBalancer (addon nginx LB only)
 
 ### Storage Account Configuration
 

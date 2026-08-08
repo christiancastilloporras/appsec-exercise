@@ -27,5 +27,5 @@ variable "mongo_version" {
 variable "aks_authorized_ip_ranges" {
   type        = list(string)
   description = "List of CIDRs allowed to access AKS API server. Must include at least one IP to enable authorized IP ranges feature."
-  default     = ["187.189.179.65/32"]  # User's public IP - enables authorized IP ranges
+  default     = ["177.245.192.41/32"]  # User's public IP - enables authorized IP ranges
 }

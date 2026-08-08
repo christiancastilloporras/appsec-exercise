@@ -1,10 +1,10 @@
-name: MongoDB NSG Temporary Access
+name: MongoDB & AKS Temporary Access
 
 on:
   workflow_dispatch:
     inputs:
       ip_address:
-        description: "Public IP address to grant temporary MongoDB access (e.g., 123.45.67.89)"
+        description: "Public IP address to grant temporary access (e.g., 123.45.67.89)"
         required: true
         type: string
       action:
@@ -21,9 +21,10 @@ env:
   NSG_NAME: mongo-nsg
   NSG_RULE_NAME: Mongo-Allow-IP
   NSG_RULE_PRIORITY: 1051
+  AKS_CLUSTER_NAME: wiz-aks-cluster
 
 jobs:
-  manage-nsg-rule:
+  manage-access:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
@@ -34,7 +35,7 @@ jobs:
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
     
-    - name: Add NSG Rule (Allow ${{ inputs.ip_address }} to Mongo 27017)
+    - name: Add Temporary Access (Mongo NSG + AKS API Server)
       if: ${{ inputs.action == 'add' }}
       run: |
         IP="${{ inputs.ip_address }}"
@@ -63,7 +64,15 @@ jobs:
         echo "--- Current NSG rules on $NSG_NAME ---"
         az network nsg rule list --resource-group "$RESOURCE_GROUP" --nsg-name "$NSG_NAME" --query "[].{Name:name, Priority:priority, Source:sourceAddressPrefix, Dest:destinationPortRange}" -o table
 
-    - name: Remove NSG Rule
+        echo "Adding IP to AKS API server authorized ranges"
+        az aks update \
+          --resource-group "$RESOURCE_GROUP" \
+          --name "$AKS_CLUSTER_NAME" \
+          --api-server-authorized-ip-ranges "$IP"
+        
+        echo "✅ IP $IP/32 added for MongoDB NSG + AKS API server access"
+
+    - name: Remove Temporary Access (Mongo NSG + AKS API Server)
       if: ${{ inputs.action == 'remove' }}
       run: |
         echo "Removing NSG rule '$NSG_RULE_NAME' from $NSG_NAME"
@@ -74,3 +83,11 @@ jobs:
 
         echo "--- Remaining NSG rules on $NSG_NAME ---"
         az network nsg rule list --resource-group "$RESOURCE_GROUP" --nsg-name "$NSG_NAME" --query "[].{Name:name, Priority:priority, Source:sourceAddressPrefix, Dest:destinationPortRange}" -o table
+
+        echo "Removing IP from AKS API server authorized ranges"
+        az aks update \
+          --resource-group "$RESOURCE_GROUP" \
+          --name "$AKS_CLUSTER_NAME" \
+          --api-server-authorized-ip-ranges ""
+        
+        echo "✅ IP access removed from MongoDB NSG + AKS API server"

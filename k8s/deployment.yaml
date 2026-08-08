@@ -23,8 +23,10 @@ spec:
         - /bin/sh
         - -c
         - |
-          echo "Waiting for MongoDB at $(MONGO_IP)..."
-          until python3 -c "from pymongo import MongoClient; import os; c=MongoClient(os.environ['MONGO_URI']).server_info(); print('MongoDB ready')" 2>/dev/null
+          echo "Installing pymongo..."
+          pip install --no-cache-dir pymongo==3.13.0 werkzeug==2.3.7 2>&1
+          echo "Waiting for MongoDB at ${MONGO_URI}..."
+          until python3 -c "from pymongo import MongoClient; import os; c=MongoClient(os.environ['MONGO_URI']); c.server_info(); print('MongoDB ready')" 2>/dev/null
           do
             echo "MongoDB not ready, retrying in 5s..."
             sleep 5
@@ -32,11 +34,6 @@ spec:
           echo "MongoDB is ready, seeding database..."
           python3 /seed/seed_db.py
         env:
-        - name: MONGO_IP
-          valueFrom:
-            configMapKeyRef:
-              name: wiz-app-config
-              key: MONGO_IP
         - name: MONGO_URI
           valueFrom:
             configMapKeyRef:

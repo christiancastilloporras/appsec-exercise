@@ -98,7 +98,8 @@ jobs:
         if [ -n "${{ inputs.aks_authorized_ips }}" ]; then
           AKS_IPS=$(echo "${{ inputs.aks_authorized_ips }}" | sed 's/,/", "/g' | sed 's/^/["/' | sed 's/$/"]/')
         else
-          AKS_IPS="[]"
+          # Fall back to default from variables.tf (must include at least one IP to enable feature)
+          AKS_IPS='["187.189.179.65/32"]'
         fi
         terraform apply -auto-approve \
           -var="location=${{ github.event.inputs.location }}" \

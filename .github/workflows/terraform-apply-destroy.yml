@@ -27,14 +27,6 @@ on:
         description: 'Comma-separated list of IPs/CIDRs to authorize on AKS API server (e.g., 123.45.67.89/32)'
         required: false
         default: ''
-      cloudflare_zone_id:
-        description: 'Cloudflare zone ID for wiz-exercise.cloudguardian.xyz'
-        required: false
-        default: ''
-      cloudflare_api_token:
-        description: 'Cloudflare API token for DNS + Origin CA'
-        required: false
-        default: ''
 
 env:
   RESOURCE_GROUP: wiz-exercise-rg
@@ -96,8 +88,12 @@ jobs:
     - name: Terraform Init
       run: |
         cd terraform
+        # Export Cloudflare secrets via env vars (TF_VAR_* prefix auto-mapped by Terraform)
+        export TF_VAR_cloudflare_zone_id="${{ secrets.CLOUDFLARE_ZONE_ID }}"
+        export TF_VAR_cloudflare_api_token="${{ secrets.CLOUDFLARE_API_TOKEN }}"
+        export TF_VAR_cloudflare_domain="wiz-exercise.cloudguardian.xyz"
         terraform init -input=false
-
+    
     - name: Terraform Apply
       if: github.event.inputs.action == 'apply'
       run: |
@@ -112,9 +108,7 @@ jobs:
           -var="location=${{ github.event.inputs.location }}" \
           -var="mongo_vm_size=${{ github.event.inputs.mongo_vm_size }}" \
           -var="aks_vm_size=${{ github.event.inputs.aks_vm_size }}" \
-          -var="aks_authorized_ip_ranges=$AKS_IPS" \
-          -var="cloudflare_zone_id=${{ inputs.cloudflare_zone_id }}" \
-          -var="cloudflare_api_token=${{ inputs.cloudflare_api_token }}" || true
+          -var="aks_authorized_ip_ranges=$AKS_IPS" || true
       continue-on-error: true
 
     - name: Copy State for Upload

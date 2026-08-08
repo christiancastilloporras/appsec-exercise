@@ -126,17 +126,17 @@ resource "azurerm_public_ip" "mongo_pip" {
   resource_group_name = azurerm_resource_group.wiz_exercise.name
   allocation_method   = "Static"
   # Standard SKU (Basic is deprecated, March 31, 2025)
-  sku                 = "Standard"
+  sku = "Standard"
 }
 
 # Mongo VM
 resource "azurerm_linux_virtual_machine" "mongo_vm" {
-  name                = "mongo-vm"
-  resource_group_name = azurerm_resource_group.wiz_exercise.name
-  location            = azurerm_resource_group.wiz_exercise.location
-  size                = var.mongo_vm_size
-  admin_username      = var.vm_admin_username
-  admin_password      = var.vm_admin_password
+  name                            = "mongo-vm"
+  resource_group_name             = azurerm_resource_group.wiz_exercise.name
+  location                        = azurerm_resource_group.wiz_exercise.location
+  size                            = var.mongo_vm_size
+  admin_username                  = var.vm_admin_username
+  admin_password                  = var.vm_admin_password
   disable_password_authentication = false
 
   # Managed Identity for the VM
@@ -156,8 +156,8 @@ resource "azurerm_linux_virtual_machine" "mongo_vm" {
   }
 
   os_disk {
-    name              = "mongo-os-disk"
-    caching           = "ReadWrite"
+    name                 = "mongo-os-disk"
+    caching              = "ReadWrite"
     storage_account_type = "Standard_LRS"
   }
 
@@ -178,11 +178,11 @@ resource "null_resource" "mongo_wait_for_ready" {
   ]
 
   connection {
-    type        = "ssh"
-    user        = var.vm_admin_username
-    password    = var.vm_admin_password
-    host        = azurerm_public_ip.mongo_pip.ip_address
-    timeout     = "15m"
+    type     = "ssh"
+    user     = var.vm_admin_username
+    password = var.vm_admin_password
+    host     = azurerm_public_ip.mongo_pip.ip_address
+    timeout  = "15m"
   }
 
   provisioner "remote-exec" {
@@ -230,7 +230,7 @@ resource "azurerm_subnet" "aks_subnet" {
   resource_group_name  = azurerm_resource_group.wiz_exercise.name
   virtual_network_name = azurerm_virtual_network.wiz_vnet.name
   address_prefixes     = ["10.0.2.0/24"]
-  
+
   # AKS will automatically manage the service delegation when creating the cluster
   # Do not add delegation here - it causes conflicts
   # delegation {
@@ -250,9 +250,9 @@ resource "azurerm_kubernetes_cluster" "aks" {
   kubernetes_version  = "1.35"
 
   default_node_pool {
-    name       = "default"
-    node_count = 1
-    vm_size    = var.aks_vm_size
+    name           = "default"
+    node_count     = 1
+    vm_size        = var.aks_vm_size
     vnet_subnet_id = azurerm_subnet.aks_subnet.id
   }
 
@@ -261,7 +261,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
   }
 
   oidc_issuer_enabled       = true
-  workload_identity_enabled   = true
+  workload_identity_enabled = true
 
   # Enable Application Routing add-on (replaces deprecated http_application_routing)
   web_app_routing {
@@ -307,7 +307,7 @@ resource "cloudflare_record" "app_dns" {
   name    = "app"
   type    = "CNAME"
   value   = data.azurerm_kubernetes_cluster.aks.fqdn
-  proxied = true  # Enables Cloudflare proxy + WAF
+  proxied = true # Enables Cloudflare proxy + WAF
   ttl     = 1
 }
 
@@ -324,15 +324,15 @@ resource "azurerm_network_security_group" "aks_subnet_nsg" {
 
   # Allow HTTP/HTTPS from Cloudflare IP ranges
   security_rule {
-    name                        = "Allow-Cloudflare-HTTP"
-    priority                    = 1000
-    direction                   = "Inbound"
-    access                      = "Allow"
-    protocol                    = "Tcp"
-    source_address_prefixes     = local.cloudflare_cidrs_v4
-    destination_port_ranges     = ["80", "443"]
-    source_port_range           = "*"
-    destination_address_prefix  = "*"
+    name                       = "Allow-Cloudflare-HTTP"
+    priority                   = 1000
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_address_prefixes    = local.cloudflare_cidrs_v4
+    destination_port_ranges    = ["80", "443"]
+    source_port_range          = "*"
+    destination_address_prefix = "*"
   }
 
   # Allow AKS API Server from AKS subnet (internal traffic)
@@ -364,8 +364,8 @@ resource "azurerm_network_security_group" "aks_subnet_nsg" {
 
 # Associate NSG with AKS subnet
 resource "azurerm_subnet_network_security_group_association" "aks_nsg_assoc" {
-  subnet_id                     = azurerm_subnet.aks_subnet.id
-  network_security_group_id     = azurerm_network_security_group.aks_subnet_nsg.id
+  subnet_id                 = azurerm_subnet.aks_subnet.id
+  network_security_group_id = azurerm_network_security_group.aks_subnet_nsg.id
 }
 
 # Data source: Cloudflare IPv4 CIDRs (fetched at plan time)
@@ -390,12 +390,12 @@ resource "azurerm_storage_account" "backup_storage" {
   resource_group_name      = azurerm_resource_group.wiz_exercise.name
   location                 = azurerm_resource_group.wiz_exercise.location
   account_tier             = "Standard"
-  account_replication_type  = "LRS"
+  account_replication_type = "LRS"
   account_kind             = "StorageV2"
 
   # Intentionally vulnerable: Allow public access to blob
   public_network_access_enabled = true
-  min_tls_version                = "TLS1_2"
+  min_tls_version               = "TLS1_2"
 
   network_rules {
     default_action = "Allow"
@@ -407,7 +407,7 @@ resource "azurerm_storage_account" "backup_storage" {
 resource "azurerm_storage_container" "backup_container" {
   name                  = "mongo-backups"
   storage_account_id    = azurerm_storage_account.backup_storage.id
-  container_access_type = "blob"  # "blob" = anonymous read access to blobs (vulnerable)
+  container_access_type = "blob" # "blob" = anonymous read access to blobs (vulnerable)
 }
 
 # Private container for Terraform state files

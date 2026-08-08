@@ -245,7 +245,7 @@ jobs:
         # Check if DNS record already exists (idempotent)
         # Get ALL existing records for app.cloudguardian.xyz and delete duplicates
         ALL_RECORDS=$(curl -s "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records?type=A&name=app" \
-          -H "Authorization: Bearer $CF_API_TOKEN" -H "Content-Type: application/json")
+                  -H "Authorization: Bearer $CF_API_TOKEN" -H "Content-Type: application/json")
 
         RECORD_COUNT=$(echo "$ALL_RECORDS" | python3 -c "import sys,json; data=json.load(sys.stdin); print(len(data.get('result', [])))" 2>/dev/null || echo "0")
 
@@ -334,6 +334,20 @@ jobs:
         kubectl get pods -o wide
         kubectl get services
         kubectl get ingress
+        
+        # Wait a bit for the ingress to pick up new pods
+        echo "Waiting for app to be ready..."
+        sleep 10
+        
+        # Test app via service directly (bypasses ingress for troubleshooting)
+        echo "=== Testing via port-forward ==="
+        kubectl port-forward svc/wiz-exercise-service 8080:80 --timeout=30s &
+        sleep 5
+        curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" http://localhost:8080/ || echo "Port-forward test failed"
+        curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" http://localhost:8080/login || echo "Login page test failed"
+        curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" http://localhost:8080/api/status || echo "API status test failed"
+        kill %1 2>/dev/null || true
+        
         echo "App deployed successfully with tag: ${{ env.IMAGE_TAG }}"
 
     - name: Cleanup - Restore User IP to AKS API Server

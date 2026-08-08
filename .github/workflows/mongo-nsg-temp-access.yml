@@ -75,7 +75,7 @@ jobs:
           --description "Temporary access for ${{ github.actor }} (${IP})"
         
         echo "--- Current NSG rules on $NSG_NAME ---"
-        az network nsg rule list --resource-group "$RESOURCE_GROUP" --nsg-name "$NSG_NAME" --query "[].{Name:name, Priority:priority, Source:sourceAddressPrefix, Dest:.destinationPortRange}" -o table
+        az network nsg rule list --resource-group "$RESOURCE_GROUP" --nsg-name "$NSG_NAME" --query "[].{Name:name, Priority:priority, Source:sourceAddressPrefix, Dest:destinationPortRange}" -o table
 
     - name: Remove NSG Rule
       if: ${{ inputs.action == 'remove' }}

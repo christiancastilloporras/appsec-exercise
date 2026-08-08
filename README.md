@@ -180,15 +180,13 @@ The app-deploy workflow handles Cloudflare DNS automatically:
 - `CLOUDFLARE_ZONE_ID` — Zone ID for `cloudguardian.xyz`
 - `CLOUDFLARE_API_TOKEN` — API token with `Zone:DNS:Edit` + `Zone:SSL:Edit` permissions
 
-**SSL Configuration:**
-The workflow sets Cloudflare SSL to **Flexible** mode automatically:
-1. `ssl = flexible` — Cloudflare terminates SSL, sends plain HTTP to AKS LB
-2. `always_use_https = on` — Redirects HTTP to HTTPS at Cloudflare edge
+**SSL/TLS Configuration:**
+The workflow automatically handles SSL/TLS termination via Cloudflare Origin CA:
 
-This means:
-- Users access `https://app.cloudguardian.xyz` (HTTPS terminated by Cloudflare)
-- Cloudflare forwards plain HTTP to the AKS LoadBalancer (no SSL cert needed on AKS)
-- AKS ingress only needs to serve HTTP (no HTTPS/TLS termination required)
+1. **Cloudflare Origin CA certificate** is requested for `app.cloudguardian.xyz` during deployment
+2. The certificate is stored as a Kubernetes `tls-origin-cert` secret
+3. The ingress is patched to include the TLS section pointing to this secret
+4. Set Cloudflare SSL/TLS mode to **"Full"** in the dashboard (the workflow doesn't modify SSL mode)
 
 ### Kubeconfig Artifact
 

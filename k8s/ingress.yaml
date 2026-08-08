@@ -9,11 +9,11 @@ spec:
   ingressClassName: webapprouting.kubernetes.azure.com
   rules:
   - http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: wiz-exercise-service
-            port:
-              number: 80
+    paths:
+    - path: /
+      pathType: Prefix
+      backend:
+        service:
+          name: wiz-exercise-service
+          port:
+            number: 80

@@ -227,19 +227,46 @@ jobs:
 
         echo "DNS record 'app.cloudguardian.xyz' created/updated pointing to $LB_IP"
 
-        # Set Cloudflare SSL to Flexible mode (terminate SSL at Cloudflare edge, HTTP to origin)
-        curl -s -X PATCH "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/settings/ssl" \
+        # Request Cloudflare Origin CA Certificate for the domain
+        CERT_HOSTNAME="app.cloudguardian.xyz"
+        echo "Requesting Origin CA certificate for $CERT_HOSTNAME..."
+        CA_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/Origin_CA/certificates" \
           -H "Authorization: Bearer $CF_API_TOKEN" \
           -H "Content-Type: application/json" \
-          --data '{"value":"flexible"}' | python3 -m json.tool || echo "SSL mode set attempted"
+          --data "{\"hostnames\":[\"$CERT_HOSTNAME\"],\"certificate_type\":\"origin-rsa\"}")
 
-        # Enable Always Use HTTPS (redirect HTTP to HTTPS at Cloudflare edge)
-        curl -s -X PATCH "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/settings/always_use_https" \
-          -H "Authorization: Bearer $CF_API_TOKEN" \
-          -H "Content-Type: application/json" \
-          --data '{"value":"on"}' || echo "Always Use HTTPS set attempted"
+        if echo "$CA_RESPONSE" | grep -q '"success":true'; then
+          echo "Origin CA certificate issued successfully"
+          # Extract certificate and private key using dedicated script
+          echo "$CA_RESPONSE" | python3 scripts/extract-origin-cert.py
+          # Validate certificate
+          openssl x509 -in /tmp/origin-cert.pem -text -noout | head -5
+          echo "Certificate validation passed"
+        else
+          echo "Failed to issue Origin CA certificate:"
+          echo "$CA_RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$CA_RESPONSE"
+          exit 1
+        fi
 
-        echo "Cloudflare SSL Flexible mode configured"
+        # Create Kubernetes TLS Secret from the Origin CA certificate
+        kubectl create secret tls tls-origin-cert \
+          --cert=/tmp/origin-cert.pem \
+          --key=/tmp/origin-key.pem \
+          --dry-run=client -o yaml | kubectl apply -f -
+        echo "TLS secret 'tls-origin-cert' created"
+
+        # Update Ingress to use TLS with the Origin CA certificate
+        kubectl patch ingress wiz-exercise-ingress --type='merge' -p='{
+          "spec": {
+            "tls": [
+              {
+                "hosts": ["app.cloudguardian.xyz"],
+                "secretName": "tls-origin-cert"
+              }
+            ]
+          }
+        }'
+        echo "Ingress TLS configuration applied"
 
     - name: Verify Deployment
       run: |

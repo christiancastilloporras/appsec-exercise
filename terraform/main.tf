@@ -281,6 +281,13 @@ resource "azurerm_kubernetes_cluster" "aks" {
     service_cidr   = "10.0.3.0/24"
     dns_service_ip = "10.0.3.10"
   }
+
+  # Restrict API server access to authorized IPs only.
+  # Empty list = deny all public access (secure by default).
+  # Use the mongo-nsg-temp-access workflow or terraform var to add IPs.
+  api_server_access_profile {
+    authorized_ip_ranges = var.aks_authorized_ip_ranges
+  }
 }
 
 # AKS ACR Role Assignment

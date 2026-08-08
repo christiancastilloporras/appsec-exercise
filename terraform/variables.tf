@@ -23,3 +23,9 @@ variable "vm_admin_password" {
 variable "mongo_version" {
   default = "3.2.22"
 }
+
+variable "aks_authorized_ip_ranges" {
+  type        = list(string)
+  description = "List of CIDRs allowed to access AKS API server. Empty list = deny all public access (default)."
+  default     = []
+}

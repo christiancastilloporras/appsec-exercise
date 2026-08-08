@@ -195,22 +195,26 @@ Daily backups are stored in Azure Blob Storage:
 
 ---
 
-## GitHub Actions Workflows
+### GitHub Actions Workflows
 
 | Workflow | Trigger | Action | Purpose |
 |----------|---------|--------|---------|
-| `app-deploy.yml` | Manual (`workflow_dispatch`) | — | Build, push, and deploy app with git SHA tags |
-| `terraform-apply-destroy.yml` | Manual (`workflow_dispatch`) | apply/destroy | Terraform apply/destroy with configurable VM sizes, Azure Blob TF state |
+| `app-deploy.yml` | Manual (`workflow_dispatch`) | — | Build, push, deploy with git SHA tags; auto-authorizes runner IP |
+| `terraform-apply-destroy.yml` | Manual (`workflow_dispatch`) | apply/destroy | Terraform apply/destroy with VM sizing + AKS authorized IPs |
+| `mongo-nsg-temp-access.yml` | Manual (`workflow_dispatch`) | add/remove | Temporary NSG + AKS API IP whitelisting |
 | `backup-cron.yml` | Scheduled (daily 2AM UTC) + Manual | — | MongoDB backup to Azure Blob (public access) |
 
 ### Workflow Inputs (terraform-apply-destroy.yml)
 
 | Input | Default | Description |
-|-------|---------|-------------|
-| `action` | `apply` | apply or destroy |
-| `location` | `West US` | Azure region |
-| `mongo_vm_size` | `Standard_B1s` | MongoDB VM size |
-| `aks_vm_size` | `Standard_B2s` | AKS node VM size (minimum required for AKS) |
+||-------|---------|-------------|
+|| `action` | `apply` | apply or destroy |
+|| `location` | `West US` | Azure region |
+|| `mongo_vm_size` | `Standard_B1s` | MongoDB VM size |
+|| `aks_vm_size` | `Standard_B2s` | AKS node VM size (minimum required for AKS) |
+|| `aks_authorized_ips` | `""` | Comma-separated IPs/CIDRs to authorize on AKS API server |
+|| `cloudflare_zone_id` | `""` | Cloudflare zone ID (required for new cloudflare resources) |
+|| `cloudflare_api_token` | `""` | Cloudflare API token (required for cloudflare resources) |
 
 ### Terraform State Management
 
@@ -270,6 +274,10 @@ This project contains **intentionally vulnerable components** for educational/se
 | `vm_admin_username` | `azureuser` | Admin username for Mongo VM |
 | `vm_admin_password` | `P@ssw0rd1234!` | Admin password for Mongo VM |
 | `mongo_version` | `3.2.22` | MongoDB version (intentionally vulnerable) |
+| `aks_authorized_ip_ranges` | `[]` | List of CIDRs for AKS API server access (empty = block all) |
+| `cloudflare_zone_id` | — | Cloudflare zone ID for `wiz-exercise.cloudguardian.xyz` |
+| `cloudflare_domain` | `wiz-exercise.cloudguardian.xyz` | Domain managed in Cloudflare |
+| `cloudflare_api_token` | — | Cloudflare API token (sensitive) |
 
 ### Terraform Provider Configuration
 
@@ -280,9 +288,53 @@ terraform {
       source  = "hashicorp/azurerm"
       version = ">= 4.0, < 5.0"
     }
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 4.0"
+    }
+    http = {
+      source  = "hashicorp/http"
+      version = "~> 3.0"
+    }
   }
 }
 ```
+
+Providers:
+- `azurerm` — Azure infrastructure
+- `cloudflare` — DNS record management (`app.wiz-exercise.cloudguardian.xyz`)
+- `http` — Fetch Cloudflare IP ranges for NSG whitelisting
+
+Required secrets:
+- `CLOUDFLARE_API_TOKEN` — Cloudflare API token with DNS:Edit permissions for the zone
+- `CLOUDFLARE_ZONE_ID` — Zone ID for `wiz-exercise.cloudguardian.xyz`
+
+### Cloudflare Ingress Architecture (ALB + Cloudflare Proxy)
+
+The Flask app is exposed to the internet via Cloudflare, not directly through the AKS Load Balancer:
+
+```
+Internet
+   |
+[Cloudflare WAF + Proxy]  <-- Only source IPs allowed (NSG: Cloudflare CIDRs)
+   |  (CNAME: app.wiz-exercise.cloudguardian.xyz → AKS LB)
+[AKS Load Balancer]
+   |
+[AKS Ingress (Application Routing)]
+   |
+[Flask App Pod] → [MongoDB VM: 10.0.1.4:27017]
+```
+
+**Security controls:**
+1. **AKS subnet NSG** — only allows inbound HTTP/HTTPS from Cloudflare's IP ranges (fetched via `data.http.cloudflare_cidrs`)
+2. **Cloudflare DNS** — CNAME record points to AKS LB with `proxied = true`
+3. **Cloudflare WAF** — front-door edge protection (managed rulesets)
+4. **AKS API server** — blocked to all public IPs by default (`api_server_access_profile.authorized_ip_ranges = []`)
+
+To access the app:
+- External users: go through Cloudflare (public URL)
+- Admin/dev access: use `mongo-nsg-temp-access.yml` to temporarily whitelist your IP for both MongoDB NSG and AKS API server
+- GitHub Actions deploys: auto-authorize runner IP during deploy, auto-revoke after
 
 ### Storage Account Configuration
 
@@ -483,6 +535,8 @@ resource "azurerm_kubernetes_cluster" "aks" {
 | `mongo_vm_identity_principal_id` | Managed Identity principal ID for Mongo VM |
 | `aks_ingress_endpoint` | Ingress URL (`https://<fqdn>`) for the Flask app |
 | `aks_ingress_fqdn` | FQDN for the ingress - stable for cluster lifetime |
+| `app_fqdn` | Cloudflare-proxied HTTPS URL (`https://app.wiz-exercise.cloudguardian.xyz`) |
+| `app_cloudflare_hostname` | Cloudflare-proxied hostname for the app |
 | `acr_login_server` | Azure Container Registry login server |
 | `acr_username` | ACR admin username (if enabled) |
 | `acr_password` | ACR admin password (if enabled) |

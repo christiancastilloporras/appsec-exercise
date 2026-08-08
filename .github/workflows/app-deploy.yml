@@ -5,18 +5,19 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: 'Docker image tag (default: git commit SHA)'
+        description: "Docker image tag (default: git commit SHA)"
         required: false
       deploy_reason:
-        description: 'Reason for deployment'
+        description: "Reason for deployment"
         required: false
-        default: 'Manual deployment'
+        default: "Manual deployment"
 
 env:
   RESOURCE_GROUP: wiz-exercise-rg
   AKS_CLUSTER_NAME: wiz-aks-cluster
   ACR_NAME: PLACEHOLDER_ACR
   TFSTATE_CONTAINER: tfstate
+  TF_VERSION: 1.7.5
 
 jobs:
   build-and-deploy:
@@ -35,24 +36,23 @@ jobs:
 
     - name: Install Terraform
       uses: hashicorp/setup-terraform@v4
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
 
     - name: Azure Login
       uses: azure/login@v3
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
-    
-    - name: Grant RBAC Permission for Role Assignment
+
+    - name: Authorize GitHub Actions Runner IP for AKS API
       run: |
-        # The service principal needs User Access Administrator at subscription level
-        # to create role assignments (e.g., ACR Pull role for AKS).
-        # Contributor role does NOT include Microsoft.Authorization/roleAssignments/write
-        SUB_ID=$(az account show --query "id" -o tsv)
-        CLIENT_ID=$(az account show --query "user.name" -o tsv)
-        SPN_OBJ_ID=$(az ad sp show --id "$CLIENT_ID" --query "objectId" -o tsv 2>/dev/null || echo "")
-        echo "Granting User Access Administrator to SPN (objectId: $SPN_OBJ_ID) at subscription level"
-        az role assignment create --assignee "$SPN_OBJ_ID" --role "User Access Administrator" --scope /subscriptions/$SUB_ID 2>/dev/null || \
-        az role assignment create --assignee "$SPN_OBJ_ID" --role "Owner" --scope /subscriptions/$SUB_ID 2>/dev/null || \
-        echo "RBAC grant attempted - may already have permission"
+        RUNNER_IP=$(curl -s https://api.ipify.org)
+        echo "RUNNER_IP=$RUNNER_IP" >> $GITHUB_ENV
+        echo "Authorizing runner IP: $RUNNER_IP/32 for AKS API server access"
+        az aks update \
+          --resource-group "$RESOURCE_GROUP" \
+          --name "$AKS_CLUSTER_NAME" \
+          --api-server-authorized-ip-ranges "$RUNNER_IP/32"
 
     - name: Download Terraform State (if exists)
       continue-on-error: true
@@ -77,54 +77,38 @@ jobs:
     - name: Terraform Init
       run: |
         cd terraform
-        terraform init
-
-    - name: Terraform Apply (infrastructure)
-      run: |
-        cd terraform
-        terraform apply -auto-approve
-      id: tfapply
+        terraform init -input=false
 
     - name: Get Terraform Outputs
       run: |
         cd terraform
-        # Use private IP for Mongo connection (more secure, uses VNet peering)
         echo "MONGO_IP=$(terraform output -raw mongo_vm_private_ip)" >> $GITHUB_ENV
         echo "ACR_NAME=$(terraform output -raw acr_login_server | cut -d'.' -f1)" >> $GITHUB_ENV
         echo "ACR_USERNAME=$(terraform output -raw acr_username)" >> $GITHUB_ENV
         echo "ACR_PASSWORD=$(terraform output -raw acr_password)" >> $GITHUB_ENV
-        # Capture the auto-generated ingress domain (stable for cluster lifetime)
-        INGRESS_DOMAIN=$(terraform output -raw aks_ingress_fqdn 2>/dev/null || true)
-        # Validate it looks like a domain, otherwise empty
-        if echo "$INGRESS_DOMAIN" | grep -qE '^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$'; then
-          echo "AKS_INGRESS_DOMAIN=$INGRESS_DOMAIN" >> $GITHUB_ENV
-        else
-          echo "AKS_INGRESS_DOMAIN=" >> $GITHUB_ENV
-          echo "Warning: aks_ingress_fqdn not available yet (run terraform apply once)"
-        fi
-        # Write kubeconfig directly to file (can't use $GITHUB_ENV for multiline content)
+        # Write kubeconfig directly to file
         mkdir -p $HOME/.kube
         terraform output -raw aks_kube_config > $HOME/.kube/config
         echo "Kubeconfig written to $HOME/.kube/config"
-      shell: bash
-    
-    - name: Authorize GitHub Actions Runner IP for AKS API
+
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v5
+
+    - name: Set up Kubeconfig
       run: |
-        RUNNER_IP=$(curl -s https://api.ipify.org)
-        echo "RUNNER_IP=$RUNNER_IP" >> $GITHUB_ENV
-        echo "Authorizing runner IP: $RUNNER_IP/32 for AKS API server access"
-        az aks update \
-          --resource-group "$RESOURCE_GROUP" \
-          --name "$AKS_CLUSTER_NAME" \
-          --api-server-authorized-ip-ranges "$RUNNER_IP/32"
-    
+        chmod 600 $HOME/.kube/config
+        kubectl version --client
+        kubectl get nodes
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v4
+
     - name: Login to ACR
       run: |
         docker login ${{ env.ACR_NAME }}.azurecr.io \
           -u ${{ env.ACR_USERNAME }} \
           -p ${{ env.ACR_PASSWORD }}
+
     - name: Build and Push Docker Image
       run: |
         IMAGE_TAG="${{ env.IMAGE_TAG }}"
@@ -134,6 +118,7 @@ jobs:
         docker push "$FULL_IMAGE"
         echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
         echo "IMAGE_FULL=$FULL_IMAGE" >> $GITHUB_ENV
+
     - name: Run Trivy Vulnerability Scanner (non-blocking)
       continue-on-error: true
       uses: aquasecurity/trivy-action@master
@@ -143,9 +128,10 @@ jobs:
         output: '/tmp/trivy-results.txt'
         severity: 'CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN'
         ignore-unfixed: true
-        exit-code: '0'  # Never fail the build - non-blocking
-        ignore-policy: ''  # No policy overrides
-        vuln-type: 'os,library'  # Scan both OS packages and language libraries
+        exit-code: '0'
+        ignore-policy: ''
+        vuln-type: 'os,library'
+
     - name: Generate SARIF Report
       if: always()
       continue-on-error: true
@@ -154,7 +140,8 @@ jobs:
         image-ref: '${{ env.ACR_NAME }}.azurecr.io/wiz-exercise:${{ env.IMAGE_TAG }}'
         format: 'sarif'
         output: '/tmp/trivy-results.sarif'
-        exit-code: '0'  # Non-blocking
+        exit-code: '0'
+
     - name: Upload Trivy Scan Results
       if: always()
       uses: actions/upload-artifact@v5
@@ -164,17 +151,10 @@ jobs:
           /tmp/trivy-results.txt
           /tmp/trivy-results.sarif
         retention-days: 30
-    - name: Install kubectl
-      uses: azure/setup-kubectl@v5
-
-    - name: Set up Kubeconfig
-      run: |
-        chmod 600 $HOME/.kube/config
-        kubectl version --client
 
     - name: Deploy ACR Secret to Kubernetes
       run: |
-        DOCKER_CONFIG=$(echo '{"auths":{"${{ env.ACR_NAME }}.azurecr.io":{"username":"${{ env.ACR_USERNAME }}","password":"${{ env.ACR_PASSWORD }}","email":"","server":"${{ env.ACR_NAME }}.azurecr.io"}}}' | base64 -w 0)
+        DOCKER_CONFIG=$(echo "{\"auths\":{\"${{ env.ACR_NAME }}.azurecr.io\":{\"username\":\"${{ env.ACR_USERNAME }}\",\"password\":\"${{ env.ACR_PASSWORD }}\",\"email\":\"\",\"server\":\"${{ env.ACR_NAME }}.azurecr.io\"}}}" | base64 -w 0)
         cat > /tmp/registry-secret.yaml << EOF
         apiVersion: v1
         kind: Secret
@@ -199,12 +179,7 @@ jobs:
         sed "s|PLACEHOLDER_ACR|${{ env.ACR_NAME }}|g; s|PLACEHOLDER_TAG|${{ env.IMAGE_TAG }}|g; s|MONGO_IP_PLACEHOLDER|${{ env.MONGO_IP }}|g" k8s/deployment.yaml | kubectl apply -f -
         sed "s|MONGO_IP_PLACEHOLDER|${{ env.MONGO_IP }}|g" k8s/configmap.yaml | kubectl apply -f -
         sed "s|MONGO_IP_PLACEHOLDER|${{ env.MONGO_IP }}|g" k8s/seed-script.yaml | kubectl apply -f -
-        if [ -n "${{ env.AKS_INGRESS_DOMAIN }}" ]; then
-          sed "s|PLACEHOLDER_HOST|${{ env.AKS_INGRESS_DOMAIN }}|g" k8s/ingress.yaml | kubectl apply -f -
-        else
-          echo "Warning: AKS_INGRESS_DOMAIN not set - deploying catch-all ingress"
-          sed 's|host: PLACEHOLDER_HOST|host: ""|g' k8s/ingress.yaml | kubectl apply -f -
-        fi
+        kubectl apply -f k8s/ingress.yaml
         kubectl apply -f k8s/service-account.yaml
         kubectl apply -f k8s/cluster-role-binding.yaml
         kubectl apply -f k8s/secrets.yaml
@@ -217,7 +192,7 @@ jobs:
         kubectl get services
         kubectl get ingress
         echo "App deployed successfully with tag: ${{ env.IMAGE_TAG }}"
-    
+
     - name: Cleanup - Remove Runner IP from AKS API Server
       if: always()
       run: |
@@ -231,7 +206,7 @@ jobs:
         else
           echo "RUNNER_IP not set, skipping cleanup"
         fi
-    
+
     - name: Upload TF State to Azure Blob Storage
       if: always()
       run: |

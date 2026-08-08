@@ -245,7 +245,8 @@ jobs:
         # Request Cloudflare Origin CA Certificate for the domain
         CERT_HOSTNAME="app.cloudguardian.xyz"
         echo "Requesting Origin CA certificate for $CERT_HOSTNAME..."
-        CA_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/Origin_CA/certificates" \
+        # Use lowercase endpoint: /origin_ca/certificates (NOT /Origin_CA/certificates)
+        CA_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/origin_ca/certificates" \
           -H "Authorization: Bearer $CF_API_TOKEN" \
           -H "Content-Type: application/json" \
           --data "{\"hostnames\":[\"$CERT_HOSTNAME\"],\"certificate_type\":\"origin-rsa\"}")

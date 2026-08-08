@@ -357,12 +357,27 @@ resource "azurerm_public_ip" "mongo_pip" {
 MongoDB is installed post-boot via `null_resource.mongo_provision` (see `main.tf`):
 - Downloads MongoDB 3.2.22 Linux x86_64 tarball
 - Extracts and copies binaries to `/usr/local/bin/`
-bind_ip 0.0.0.0:27017` (all interfaces)
+- Binds to `0.0.0.0:27017` (all interfaces)
 - Starts via cloud-init (`custom_data`) — robust startup independent of Terraform session
 - Runs as systemd service with `nohup mongod ... --fork` (survives VM reboot and session disconnect)
 - Includes startup validation: retries TCP check on 27017 for 60s, exits with error on failure
 - Logs to `/var/log/mongodb/mongod.log` and `/home/azureuser/logs/mongod.out`
 - Provisioning script: `terraform/scripts/start-mongod.sh`
+
+### Database Seeding (Idempotent)
+
+The `init-mongo` init container in the Flask deployment runs `seed_db.py` on every pod restart. The script is **idempotent** — it checks if the admin user exists before inserting:
+
+```python
+admin_user = users.find_one({'username': 'admin'})
+if not admin_user:
+    users.insert_one({...})
+```
+
+This means:
+- **Fresh DB**: admin user is created with `admin/admin123`
+- **Existing DB**: script logs "Admin user already exists" and exits without modifying data
+- **Container restart**: no data loss, admin user preserved
 
 ### Backup Script
 

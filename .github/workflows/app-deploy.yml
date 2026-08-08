@@ -197,6 +197,8 @@ jobs:
       env:
         CF_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
         CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        CF_ORIGIN_CA_CERT: ${{ secrets.CF_ORIGIN_CA_CERT }}
+        CF_ORIGIN_CA_KEY: ${{ secrets.CF_ORIGIN_CA_KEY }}
       run: |
         # Wait for the LoadBalancer to get an external IP
         echo "Waiting for LoadBalancer external IP..."
@@ -205,7 +207,12 @@ jobs:
         ELAPSED=0
 
         while [ $ELAPSED -lt $TIMEOUT ]; do
-          LB_IP=$(kubectl get svc wiz-exercise-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          # For AKS Application Routing (webapprouting), the external IP is on the ingress
+          LB_IP=$(kubectl get ingress wiz-exercise-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          if [ -z "$LB_IP" ]; then
+            # Fallback: check the external-nginx service in app-routing-system
+            LB_IP=$(kubectl get svc external-nginx -n app-routing-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          fi
           if [ -n "$LB_IP" ] && [ "$LB_IP" != "<none>" ]; then
             echo "LoadBalancer IP found: $LB_IP"
             echo "LB_IP=$LB_IP" >> $GITHUB_ENV
@@ -218,7 +225,8 @@ jobs:
 
         if [ -z "$LB_IP" ] || [ "$LB_IP" = "<none>" ]; then
           echo "ERROR: LoadBalancer IP not assigned within timeout"
-          kubectl get svc wiz-exercise-service -o wide
+          kubectl get ingress wiz-exercise-ingress -o wide
+          kubectl get svc -n app-routing-system -o wide
           exit 1
         fi
 
@@ -255,10 +263,11 @@ jobs:
         # 5. Download both certificate and private key
         # 6. Add to GitHub repo secrets as CF_ORIGIN_CA_CERT and CF_ORIGIN_CA_KEY
 
-        if [ -n "${{ secrets.CF_ORIGIN_CA_CERT }}" ] && [ -n "${{ secrets.CF_ORIGIN_CA_KEY }}" ]; then
+        if [ -n "$CF_ORIGIN_CA_CERT" ] && [ -n "$CF_ORIGIN_CA_KEY" ]; then
           echo "Using pre-generated Origin CA certificate from GitHub secrets"
-          echo "${{ secrets.CF_ORIGIN_CA_CERT }}" > /tmp/origin-cert.pem
-          echo "${{ secrets.CF_ORIGIN_CA_KEY }}" > /tmp/origin-key.pem
+          # Use printf to preserve multi-line PEM content
+          printf '%s\n' "$CF_ORIGIN_CA_CERT" > /tmp/origin-cert.pem
+          printf '%s\n' "$CF_ORIGIN_CA_KEY" > /tmp/origin-key.pem
 
           # Validate certificate
           openssl x509 -in /tmp/origin-cert.pem -text -noout | head -5

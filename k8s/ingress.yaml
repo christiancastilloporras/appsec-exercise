@@ -5,8 +5,19 @@ metadata:
 spec:
   ingressClassName: webapprouting
   rules:
+  # Explicit host for app.cloudguardian.xyz
   - host: app.cloudguardian.xyz
     http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: wiz-exercise-service
+            port:
+              number: 80
+  # Catch-all: no host matches any hostname (for debugging with bare IP)
+  - http:
       paths:
       - path: /
         pathType: Prefix

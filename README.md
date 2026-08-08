@@ -1,15 +1,16 @@
 # WIZ Exercise - Vulnerable Web App with MongoDB
 
-## Architecture
+## Overview
 
-Flask web app deployed on **AKS** (Azure Kubernetes Service), backed by **MongoDB 3.2.22** in a VM.
-Container image stored in **Azure Container Registry (ACR)**.
+Flask web application deployed on Azure Kubernetes Service (AKS), backed by a vulnerable MongoDB 3.2.22 instance running on a separate Azure VM. The project intentionally includes multiple security vulnerabilities for educational and security testing purposes.
+
+## Architecture
 
 ```
 Internet
    |
 [AKS Ingress] --> [Flask App (Docker)] --> [MongoDB 3.2.22 VM]
-   |                                    (vulnerable)
+   |                                    (vulnerable - binds 0.0.0.0:27017)
 [Azure Load Balancer]
    |
 [Azure Container Registry]
@@ -17,14 +18,28 @@ Internet
 [Docker Image: wiz-exercise]
 ```
 
+### Component Map (from graphify analysis)
+
+| Component | Resource | Purpose |
+|---|---|---|
+| `app.py` | Flask routes | `/` (index), `/login` (auth), `/api/contacts` (REST), `/<username>/contacts` (CRUD) |
+| `seed_db.py` | DB init | Creates `admin`/`admin123` user in MongoDB `admin-app` database |
+| `terraform/main.tf` | Azure infra | VMs, AKS, ACR, networking, storage |
+| `terraform/outputs.tf` | TF outputs | Public/private IPs, connection strings, kubeconfig |
+| `.github/workflows/app-deploy.yml` | CI/CD | Build → push → deploy to AKS |
+| `.github/workflows/terraform-apply-destroy.yml` | CI/CD | Terraform apply/destroy with VM sizing inputs |
+| `.github/workflows/backup-cron.yml` | Daily job | MongoDB dumps to public Azure Blob Storage |
+| `.github/workflows/mongo-nsg-temp-access.yml` | CI/CD | Temporary NSG IP whitelisting for external DB access |
+
 ## Components
 
-- **Frontend**: Flask web app (Docker container) with admin login
-- **Backend**: MongoDB 3.2.22 (vulnerable version) on Azure VM
-- **Container Registry**: Azure Container Registry (ACR)
-- **Orchestration**: AKS cluster with Application Routing Add-on (HTTP/S via `webapprouting.kubernetes.azure.com`)
-- **IaC**: Terraform for all Azure infrastructure
-- **Backups**: Daily MongoDB dumps to Azure Blob Storage (publicly accessible)
+- **Frontend**: Flask web app (Python 3.11) in Docker container on AKS
+- **Backend**: MongoDB 3.2.22 (vulnerable version) on Ubuntu 18.04 VM
+- **Container Registry**: Azure Container Registry (ACR) with admin enabled
+- **Orchestration**: AKS 1.35 with Azure CNI networking, Application Routing Add-on
+- **IaC**: Terraform managing all Azure infrastructure
+- **Backups**: Daily MongoDB dumps to publicly accessible Azure Blob Storage
+- **Security Model**: ClusterAdmin service account (over-privileged by design)
 
 ## Directory Structure
 
@@ -52,6 +67,7 @@ WIZ-exercise/
 ├── .github/workflows/
 │   ├── app-deploy.yml      # App build + deploy (manual)
 │   ├── terraform-apply-destroy.yml # Terraform apply/destroy with VM sizing
+│   ├── mongo-nsg-temp-access.yml # Temporary NSG IP whitelisting workflow
 │   └── backup-cron.yml     # Daily MongoDB backup (cron)
 ├── README.md               # This file
 └── terraform/

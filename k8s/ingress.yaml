@@ -6,10 +6,6 @@ metadata:
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
 spec:
   ingressClassName: webapprouting
-  tls:
-  - hosts:
-    - app.cloudguardian.xyz
-    secretName: tls-origin-cert
   rules:
   - host: app.cloudguardian.xyz
     http:

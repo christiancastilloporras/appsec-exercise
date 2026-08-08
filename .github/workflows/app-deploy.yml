@@ -199,6 +199,12 @@ jobs:
         CF_ORIGIN_CA_CERT: ${{ secrets.CF_ORIGIN_CA_CERT }}
         CF_ORIGIN_CA_KEY: ${{ secrets.CF_ORIGIN_CA_KEY }}
       run: |
+        # Debug: Show all services and ingresses
+        echo "=== Debug: All Services ==="
+        kubectl get svc -A -o wide || true
+        echo "=== Debug: Ingresses ==="
+        kubectl get ingress -A -o wide || true
+        
         # Wait for the LoadBalancer to get an external IP
         echo "Waiting for LoadBalancer external IP..."
         TIMEOUT=300
@@ -209,8 +215,15 @@ jobs:
           # For AKS Application Routing (webapprouting), the external IP is on the ingress
           LB_IP=$(kubectl get ingress wiz-exercise-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
           if [ -z "$LB_IP" ]; then
-            # Fallback: check the external-nginx service in app-routing-system
-            LB_IP=$(kubectl get svc external-nginx -n app-routing-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+            # Fallback: check services in app-routing-system namespace for LoadBalancer
+            # The exact service name may vary depending on AKS version
+            for svc_name in "external-nginx" "nginx" "controller" "ingress-nginx-controller"; do
+              LB_IP=$(kubectl get svc "$svc_name" -n app-routing-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+              if [ -n "$LB_IP" ] && [ "$LB_IP" != "<none>" ]; then
+                echo "Found LB IP from service $svc_name"
+                break
+              fi
+            done
           fi
           if [ -n "$LB_IP" ] && [ "$LB_IP" != "<none>" ]; then
             echo "LoadBalancer IP found: $LB_IP"

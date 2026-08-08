@@ -63,6 +63,13 @@ def login():
         return render_template('login.html', error='Database not available')
     return render_template('login.html')
 
+@app.route('/health')
+@app.route('/debug')
+def health():
+    if db:
+        return jsonify({'status': 'healthy', 'db': 'connected'})
+    return jsonify({'status': 'degraded', 'db': 'disconnected'}), 503
+
 @app.route('/api/status')
 def status():
     db_status = 'connected' if db else 'disconnected'

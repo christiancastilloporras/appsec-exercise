@@ -4,8 +4,8 @@ metadata:
   name: wiz-exercise-ingress
   annotations:
     service.beta.kubernetes.io/azure-load-balancer-internal: "false"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
 spec:
-  # AKS Application Routing add-on uses this class name
   ingressClassName: webapprouting.kubernetes.azure.com
   rules:
   - http:

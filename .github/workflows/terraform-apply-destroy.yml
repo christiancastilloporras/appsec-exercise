@@ -92,10 +92,6 @@ jobs:
 
     - name: Terraform Apply
       if: github.event.inputs.action == 'apply'
-      env:
-        TF_VAR_cloudflare_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
-        TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        TF_VAR_cloudflare_domain: "wiz-exercise.cloudguardian.xyz"
       run: |
         cd terraform
         # Convert comma-separated AKS authorized IPs to Terraform list format
@@ -151,10 +147,6 @@ jobs:
 
     - name: Terraform Destroy
       if: github.event.inputs.action == 'destroy'
-      env:
-        TF_VAR_cloudflare_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
-        TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        TF_VAR_cloudflare_domain: "wiz-exercise.cloudguardian.xyz"
       run: |
         cd terraform
         # Check if state file exists

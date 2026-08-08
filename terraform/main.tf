@@ -4,9 +4,7 @@ provider "azurerm" {
 }
 
 # Cloudflare provider for DNS + Origin CA cert management
-provider "cloudflare" {
-  api_token = var.cloudflare_api_token
-}
+# Cloudflare provider for DNS + Origin CA cert management
 
 resource "azurerm_resource_group" "wiz_exercise" {
   name     = "wiz-exercise-rg"
@@ -300,84 +298,9 @@ data "azurerm_kubernetes_cluster" "aks" {
   depends_on          = [azurerm_kubernetes_cluster.aks]
 }
 
-# Cloudflare DNS Record - points Cloudflare proxy to AKS internal LB
-# Uses AKS-managed ingress endpoint (Application Routing add-on)
-resource "cloudflare_record" "app_dns" {
-  zone_id = var.cloudflare_zone_id
-  name    = "app"
-  type    = "CNAME"
-  value   = data.azurerm_kubernetes_cluster.aks.fqdn
-  proxied = true # Enables Cloudflare proxy + WAF
-  ttl     = 1
-}
-
-# Cloudflare Origin CA Certificate for TLS termination at ALB
-# Note: This requires a CSR to be generated first. For simplicity, the cert
-# can be created manually via Cloudflare dashboard or a separate script.
-# The DNS record below enables Cloudflare proxy + WAF in front of the ALB.
-
-# AKS NSG - restrict AKS API traffic to Cloudflare IPs + AKS internal only
-resource "azurerm_network_security_group" "aks_subnet_nsg" {
-  name                = "aks-subnet-nsg"
-  location            = azurerm_resource_group.wiz_exercise.location
-  resource_group_name = azurerm_resource_group.wiz_exercise.name
-
-  # Allow HTTP/HTTPS from Cloudflare IP ranges
-  security_rule {
-    name                       = "Allow-Cloudflare-HTTP"
-    priority                   = 1000
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_address_prefixes    = local.cloudflare_cidrs_v4
-    destination_port_ranges    = ["80", "443"]
-    source_port_range          = "*"
-    destination_address_prefix = "*"
-  }
-
-  # Allow AKS API Server from AKS subnet (internal traffic)
-  security_rule {
-    name                       = "Allow-AKS-API-Internal"
-    priority                   = 1010
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_address_prefix      = azurerm_subnet.aks_subnet.address_prefixes[0]
-    destination_port_range     = "443"
-    source_port_range          = "*"
-    destination_address_prefix = "*"
-  }
-
-  # Allow VNet peering traffic (Mongo <-> AKS)
-  security_rule {
-    name                       = "Allow-VNet"
-    priority                   = 1020
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "*"
-    source_address_prefix      = "VirtualNetwork"
-    destination_address_prefix = "*"
-  }
-}
-
-# Associate NSG with AKS subnet
-resource "azurerm_subnet_network_security_group_association" "aks_nsg_assoc" {
-  subnet_id                 = azurerm_subnet.aks_subnet.id
-  network_security_group_id = azurerm_network_security_group.aks_subnet_nsg.id
-}
-
-# Data source: Cloudflare IPv4 CIDRs (fetched at plan time)
-data "http" "cloudflare_cidrs" {
-  url = "https://www.cloudflare.com/ips-v4"
-}
-
-locals {
-  cloudflare_cidrs_v4 = [for line in split("\n", trimspace(data.http.cloudflare_cidrs.response_body)) : line if line != ""]
-}
-
-# Random suffix for unique resource names (prevents recreation on every apply)
+# Remove Cloudflare-related resources
+# The app is exposed directly via AKS Load Balancer + Application Routing
+# No Cloudflare proxy/WAF configuration in this revert
 resource "random_string" "storage_suffix" {
   length  = 12
   special = false

@@ -94,11 +94,25 @@ jobs:
     - name: Install kubectl
       uses: azure/setup-kubectl@v5
 
+    - name: Download AKS Kubeconfig (if available)
+      if: always()
+      continue-on-error: true
+      uses: actions/download-artifact@v5
+      with:
+        name: aks-kubeconfig
+        path: $HOME/.kube
+        merge-multiple: true
+
     - name: Set up Kubeconfig
       run: |
-        chmod 600 $HOME/.kube/config
+        if [ -f $HOME/.kube/kubeconfig ]; then
+          mv $HOME/.kube/kubeconfig $HOME/.kube/config
+        elif [ ! -f $HOME/.kube/config ]; then
+          echo "No kubeconfig available from artifact"
+        fi
+        chmod 600 $HOME/.kube/config 2>/dev/null || true
         kubectl version --client
-        kubectl get nodes
+        kubectl get nodes 2>&1 || echo "kubectl cluster access unavailable (expected if no kubeconfig)"
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v4
@@ -179,11 +193,11 @@ jobs:
         sed "s|PLACEHOLDER_ACR|${{ env.ACR_NAME }}|g; s|PLACEHOLDER_TAG|${{ env.IMAGE_TAG }}|g; s|MONGO_IP_PLACEHOLDER|${{ env.MONGO_IP }}|g" k8s/deployment.yaml | kubectl apply -f -
         sed "s|MONGO_IP_PLACEHOLDER|${{ env.MONGO_IP }}|g" k8s/configmap.yaml | kubectl apply -f -
         sed "s|MONGO_IP_PLACEHOLDER|${{ env.MONGO_IP }}|g" k8s/seed-script.yaml | kubectl apply -f -
+        kubectl apply -f k8s/service.yaml
         kubectl apply -f k8s/ingress.yaml
         kubectl apply -f k8s/service-account.yaml
         kubectl apply -f k8s/cluster-role-binding.yaml
         kubectl apply -f k8s/secrets.yaml
-        kubectl apply -f k8s/service.yaml
 
     - name: Verify Deployment
       run: |

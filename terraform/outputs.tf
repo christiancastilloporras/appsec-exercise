@@ -50,17 +50,6 @@ output "aks_ingress_fqdn" {
   description = "FQDN for the ingress - stable for cluster lifetime"
 }
 
-# Cloudflare DNS record for public HTTPS access
-output "app_fqdn" {
-  value       = "https://${cloudflare_record.app_dns.hostname}"
-  description = "Public HTTPS URL for the Flask app via Cloudflare proxy"
-}
-
-output "app_cloudflare_hostname" {
-  value       = cloudflare_record.app_dns.hostname
-  description = "Cloudflare-proxied hostname for the app"
-}
-
 output "storage_account_name" {
   value = azurerm_storage_account.backup_storage.name
 }

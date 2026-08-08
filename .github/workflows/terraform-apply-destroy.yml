@@ -111,6 +111,36 @@ jobs:
           -var="aks_authorized_ip_ranges=$AKS_IPS" || true
       continue-on-error: true
 
+    - name: Save AKS Kubeconfig as Artifact
+      if: always() && github.event.inputs.action == 'apply'
+      continue-on-error: true
+      run: |
+        cd terraform
+        mkdir -p $RUNNER_TEMP/aks-artifact
+        # Generate fresh kubeconfig from AKS cluster
+        az aks get-credentials \
+          --resource-group "$RESOURCE_GROUP" \
+          --name "wiz-aks-cluster" \
+          --file $RUNNER_TEMP/aks-artifact/kubeconfig \
+          --admin \
+          --overwrite-existing 2>/dev/null || \
+        # If that fails, try getting it from terraform output
+        terraform output -raw aks_kube_config > $RUNNER_TEMP/aks-artifact/kubeconfig 2>/dev/null || \
+        echo "Could not retrieve kubeconfig"
+        ls -la $RUNNER_TEMP/aks-artifact/
+        echo "Kubeconfig saved to artifact"
+      env:
+        RESOURCE_GROUP: ${{ env.RESOURCE_GROUP }}
+
+    - name: Upload AKS Kubeconfig Artifact
+      if: always() && github.event.inputs.action == 'apply'
+      continue-on-error: true
+      uses: actions/upload-artifact@v5
+      with:
+        name: aks-kubeconfig
+        path: ${{ runner.temp }}/aks-artifact/kubeconfig
+        retention-days: 7
+
     - name: Copy State for Upload
       if: always() && github.event.inputs.action == 'apply'
       run: |

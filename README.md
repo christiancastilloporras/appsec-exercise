@@ -193,12 +193,38 @@ The app-deploy workflow handles Cloudflare DNS automatically:
 - `CLOUDFLARE_API_TOKEN` — API token with `Zone:DNS:Edit` + `Zone:SSL:Edit` permissions
 
 **SSL/TLS Configuration:**
-The workflow automatically handles SSL/TLS termination via Cloudflare Origin CA:
 
-1. **Cloudflare Origin CA certificate** is requested for `app.cloudguardian.xyz` during deployment
-2. The certificate is stored as a Kubernetes `tls-origin-cert` secret
-3. The ingress is patched to include the TLS section pointing to this secret
-4. Set Cloudflare SSL/TLS mode to **"Full"** in the dashboard (the workflow doesn't modify SSL mode)
+This project uses **Cloudflare Origin CA Certificate** for TLS termination between Cloudflare and the AKS LoadBalancer.
+
+#### Manual Certificate Setup (recommended)
+
+1. Go to **Cloudflare Dashboard → SSL/TLS → Origin Certificates → Create Certificate**
+2. Choose **"Let Cloudflare generate the private key pair"**
+3. Set **Hostname(s)** to `*.cloudguardian.xyz` (wildcard) or `app.cloudguardian.xyz` (specific)
+4. Select **"RSA"** certificate type
+5. Download both:
+   - `origin.pem` (certificate)
+   - `origin-key.pem` (private key)
+6. Create the Kubernetes TLS secret:
+   ```bash
+   kubectl -n default create secret tls tls-origin-cert \
+     --cert=origin.pem \
+     --key=origin-key.pem
+   ```
+7. Set **Cloudflare SSL/TLS → Overview → SSL/TLS encryption** to **"Full"** mode
+
+#### Automated Certificate Setup (workflow)
+
+The `app-deploy.yml` workflow attempts to create Origin CA certificates automatically:
+- Requires `Zone - SSL and Certificates - Edit` permission on the Cloudflare API token
+- If this fails, the workflow continues without TLS (HTTP-only)
+- You can manually create the cert afterward using the steps above
+
+#### Required Cloudflare API Token Permissions
+
+For full automated setup, the `CLOUDFLARE_API_TOKEN` should include:
+- `Zone - DNS - Edit` (for DNS record management)
+- `Zone - SSL and Certificates - Edit` (for Origin CA certificate management)
 
 ### Kubeconfig Artifact
 

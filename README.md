@@ -336,6 +336,33 @@ To access the app:
 - Admin/dev access: use `mongo-nsg-temp-access.yml` to temporarily whitelist your IP for both MongoDB NSG and AKS API server
 - GitHub Actions deploys: auto-authorize runner IP during deploy, auto-revoke after
 
+### Accessing the Application (via Cloudflare)
+
+After infrastructure deploy completes:
+
+1. **Get the Cloudflare hostname**:
+   ```bash
+   cd terraform
+   terraform output -raw app_cloudflare_hostname
+   ```
+
+2. **Manual access (one-time)**:
+   - Run `terraform-apply-destroy.yml` workflow → outputs `aks-kubeconfig` artifact
+   - Download kubeconfig from the workflow artifacts
+   - Use kubeconfig with kubectl to verify the app
+
+3. **App URL**: `https://app.wiz-exercise.cloudguardian.xyz` (via Cloudflare proxy)
+
+### Kubeconfig Artifact
+
+The `terraform-apply-destroy.yml` workflow saves the AKS kubeconfig as a downloadable artifact:
+
+| Artifact Name | Contents | Retention |
+|---|---|---|
+| `aks-kubeconfig` | AKS admin kubeconfig file | 7 days |
+
+Download from any workflow run: `Actions` → workflow run → `Artifacts` section → `aks-kubeconfig`
+
 ### Storage Account Configuration
 
 The Azure Storage Account is intentionally misconfigured with public access enabled:

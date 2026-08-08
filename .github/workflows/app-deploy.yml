@@ -221,7 +221,8 @@ jobs:
     - name: Cleanup - Remove Runner IP from AKS API Server
       if: always()
       run: |
-        if [ -n "${RUNNER_IP}" ]; then
+        RUNNER_IP="${{ env.RUNNER_IP }}"
+        if [ -n "$RUNNER_IP" ]; then
           echo "Removing runner IP ($RUNNER_IP/32) from AKS API server authorized ranges"
           az aks update \
             --resource-group "$RESOURCE_GROUP" \

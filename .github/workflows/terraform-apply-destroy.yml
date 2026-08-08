@@ -27,6 +27,14 @@ on:
         description: 'Comma-separated list of IPs/CIDRs to authorize on AKS API server (e.g., 123.45.67.89/32)'
         required: false
         default: ''
+      cloudflare_zone_id:
+        description: 'Cloudflare zone ID for wiz-exercise.cloudguardian.xyz'
+        required: false
+        default: ''
+      cloudflare_api_token:
+        description: 'Cloudflare API token for DNS + Origin CA'
+        required: false
+        default: ''
 
 env:
   RESOURCE_GROUP: wiz-exercise-rg
@@ -94,10 +102,19 @@ jobs:
       if: github.event.inputs.action == 'apply'
       run: |
         cd terraform
+        # Convert comma-separated AKS authorized IPs to Terraform list format
+        if [ -n "${{ inputs.aks_authorized_ips }}" ]; then
+          AKS_IPS=$(echo "${{ inputs.aks_authorized_ips }}" | sed 's/,/", "/g' | sed 's/^/["/' | sed 's/$/"]/')
+        else
+          AKS_IPS="[]"
+        fi
         terraform apply -auto-approve \
           -var="location=${{ github.event.inputs.location }}" \
           -var="mongo_vm_size=${{ github.event.inputs.mongo_vm_size }}" \
-          -var="aks_vm_size=${{ github.event.inputs.aks_vm_size }}" || true
+          -var="aks_vm_size=${{ github.event.inputs.aks_vm_size }}" \
+          -var="aks_authorized_ip_ranges=$AKS_IPS" \
+          -var="cloudflare_zone_id=${{ inputs.cloudflare_zone_id }}" \
+          -var="cloudflare_api_token=${{ inputs.cloudflare_api_token }}" || true
       continue-on-error: true
 
     - name: Copy State for Upload

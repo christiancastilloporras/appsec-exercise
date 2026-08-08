@@ -26,6 +26,24 @@ variable "mongo_version" {
 
 variable "aks_authorized_ip_ranges" {
   type        = list(string)
-  description = "List of CIDRs allowed to access AKS API server. Empty list = deny all public access (default)."
+  description = "List of CIDRs allowed to access AKS API server. Defaults to empty list = deny all public access."
   default     = []
+}
+
+# Cloudflare integration
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID for wiz-exercise.cloudguardian.xyz"
+  type        = string
+}
+
+variable "cloudflare_domain" {
+  description = "Domain name managed in Cloudflare"
+  type        = string
+  default     = "wiz-exercise.cloudguardian.xyz"
+}
+
+variable "cloudflare_api_token" {
+  description = "Cloudflare API token with DNS and Origin CA permissions"
+  type        = string
+  sensitive   = true
 }

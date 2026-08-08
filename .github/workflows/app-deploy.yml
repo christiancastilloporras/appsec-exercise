@@ -148,13 +148,16 @@ jobs:
     - name: Update ConfigMap with Mongo IP
       run: |
         kubectl create configmap wiz-app-config \
+          --from-literal=MONGO_IP="${{ env.MONGO_IP }}" \
           --from-literal=MONGO_URI="mongodb://${{ env.MONGO_IP }}:27017/admin-app" \
           --from-literal=SECRET_KEY="wiz-secret-key" \
           --dry-run=client -o yaml | kubectl apply -f -
 
     - name: Deploy K8s Manifests
       run: |
-        sed "s|PLACEHOLDER_ACR|${{ env.ACR_NAME }}|g; s|PLACEHOLDER_TAG|${{ env.IMAGE_TAG }}|g" k8s/deployment.yaml | kubectl apply -f -
+        sed "s|PLACEHOLDER_ACR|${{ env.ACR_NAME }}|g; s|PLACEHOLDER_TAG|${{ env.IMAGE_TAG }}|g; s|MONGO_IP_PLACEHOLDER|${{ env.MONGO_IP }}|g" k8s/deployment.yaml | kubectl apply -f -
+        sed "s|MONGO_IP_PLACEHOLDER|${{ env.MONGO_IP }}|g" k8s/configmap.yaml | kubectl apply -f -
+        sed "s|MONGO_IP_PLACEHOLDER|${{ env.MONGO_IP }}|g" k8s/seed-script.yaml | kubectl apply -f -
         if [ -n "${{ env.AKS_INGRESS_DOMAIN }}" ]; then
           sed "s|PLACEHOLDER_HOST|${{ env.AKS_INGRESS_DOMAIN }}|g" k8s/ingress.yaml | kubectl apply -f -
         else

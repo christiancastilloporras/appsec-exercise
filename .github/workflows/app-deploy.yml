@@ -107,6 +107,17 @@ jobs:
         terraform output -raw aks_kube_config > $HOME/.kube/config
         echo "Kubeconfig written to $HOME/.kube/config"
       shell: bash
+    
+    - name: Authorize GitHub Actions Runner IP for AKS API
+      run: |
+        RUNNER_IP=$(curl -s https://api.ipify.org)
+        echo "RUNNER_IP=$RUNNER_IP" >> $GITHUB_ENV
+        echo "Authorizing runner IP: $RUNNER_IP/32 for AKS API server access"
+        az aks update \
+          --resource-group "$RESOURCE_GROUP" \
+          --name "$AKS_CLUSTER_NAME" \
+          --api-server-authorized-ip-ranges "$RUNNER_IP/32"
+    
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v4
     - name: Login to ACR
@@ -206,7 +217,20 @@ jobs:
         kubectl get services
         kubectl get ingress
         echo "App deployed successfully with tag: ${{ env.IMAGE_TAG }}"
-
+    
+    - name: Cleanup - Remove Runner IP from AKS API Server
+      if: always()
+      run: |
+        if [ -n "${RUNNER_IP}" ]; then
+          echo "Removing runner IP ($RUNNER_IP/32) from AKS API server authorized ranges"
+          az aks update \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$AKS_CLUSTER_NAME" \
+            --api-server-authorized-ip-ranges ""
+        else
+          echo "RUNNER_IP not set, skipping cleanup"
+        fi
+    
     - name: Upload TF State to Azure Blob Storage
       if: always()
       run: |

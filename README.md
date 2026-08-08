@@ -158,20 +158,27 @@ Creates admin user in MongoDB.
 
 ### Accessing the Application
 
-After infrastructure deploy completes:
+After deployment (app-deploy workflow):
 
-1. **Get the ingress endpoint**:
-   ```bash
-   cd terraform
-   terraform output -raw aks_ingress_endpoint
-   ```
+1. The workflow creates a Cloudflare DNS record `app.cloudguardian.xyz` pointing to the AKS LoadBalancer IP
+2. **App URL**: `http://app.cloudguardian.xyz/login`
 
-2. **Manual access (one-time)**:
-   - Run `terraform-apply-destroy.yml` workflow → outputs `aks-kubeconfig` artifact
-   - Download kubeconfig from the workflow artifacts
-   - Use kubeconfig with kubectl to verify the app
+**Note:** The Cloudflare record is created with `proxied=true`, routing traffic through Cloudflare's network. If you want direct ALB access without Cloudflare, disable proxy in the Cloudflare dashboard.
 
-3. **App URL**: `http://<aks-ingress-endpoint>/login`
+### Cloudflare DNS Record
+
+The app-deploy workflow handles Cloudflare DNS automatically:
+
+| Step | Action |
+|---|---|
+| **Wait for LB IP** | Polls Kubernetes service until external IP is assigned (up to 5 min) |
+| **Check existing** | Query Cloudflare API for existing `app` record (idempotent) |
+| **Update/Create** | Updates A record if exists, creates new if not |
+| **TTL** | 1 (automatic, proxied through Cloudflare) |
+
+**Required secrets:**
+- `CLOUDFLARE_ZONE_ID` — Zone ID for `cloudguardian.xyz`
+- `CLOUDFLARE_API_TOKEN` — API token with `Zone:DNS:Edit` permission
 
 ### Kubeconfig Artifact
 
@@ -215,7 +222,7 @@ Daily backups are stored in Azure Blob Storage:
 
 | Workflow | Trigger | Action | Purpose |
 |----------|---------|--------|---------|
-| `app-deploy.yml` | Manual (`workflow_dispatch`) | — | Build, push, deploy with git SHA tags; auto-authorizes runner IP |
+| `app-deploy.yml` | Manual (`workflow_dispatch`) | — | Build, push, deploy with git SHA tags; auto-authorizes runner IP + Cloudflare DNS |
 | `terraform-apply-destroy.yml` | Manual (`workflow_dispatch`) | apply/destroy | Terraform apply/destroy with VM sizing + AKS authorized IPs |
 | `mongo-nsg-temp-access.yml` | Manual (`workflow_dispatch`) | add/remove | Temporary NSG + AKS API IP whitelisting |
 | `backup-cron.yml` | Scheduled (daily 2AM UTC) + Manual | — | MongoDB backup to Azure Blob (public access) |

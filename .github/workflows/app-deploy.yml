@@ -5,12 +5,12 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Docker image tag (default: git commit SHA)"
+        description: 'Docker image tag (default: git commit SHA)'
         required: false
       deploy_reason:
-        description: "Reason for deployment"
+        description: 'Reason for deployment'
         required: false
-        default: "Manual deployment"
+        default: 'Manual deployment'
 
 env:
   RESOURCE_GROUP: wiz-exercise-rg
@@ -58,7 +58,6 @@ jobs:
       continue-on-error: true
       run: |
         echo "Attempting to download Terraform state from Azure Blob Storage..."
-        # Find storage account name from resource group
         TFSTATE_STORAGE_ACCOUNT=$(az storage account list \
           --resource-group "$RESOURCE_GROUP" \
           --query "[?contains(name, 'wizbackup')].name | [0]" -o tsv 2>/dev/null)
@@ -86,33 +85,12 @@ jobs:
         echo "ACR_NAME=$(terraform output -raw acr_login_server | cut -d'.' -f1)" >> $GITHUB_ENV
         echo "ACR_USERNAME=$(terraform output -raw acr_username)" >> $GITHUB_ENV
         echo "ACR_PASSWORD=$(terraform output -raw acr_password)" >> $GITHUB_ENV
-        # Write kubeconfig directly to file
         mkdir -p $HOME/.kube
         terraform output -raw aks_kube_config > $HOME/.kube/config
         echo "Kubeconfig written to $HOME/.kube/config"
 
     - name: Install kubectl
       uses: azure/setup-kubectl@v5
-
-    - name: Download AKS Kubeconfig (if available)
-      if: always()
-      continue-on-error: true
-      uses: actions/download-artifact@v5
-      with:
-        name: aks-kubeconfig
-        path: $HOME/.kube
-        merge-multiple: true
-
-    - name: Set up Kubeconfig
-      run: |
-        if [ -f $HOME/.kube/kubeconfig ]; then
-          mv $HOME/.kube/kubeconfig $HOME/.kube/config
-        elif [ ! -f $HOME/.kube/config ]; then
-          echo "No kubeconfig available from artifact"
-        fi
-        chmod 600 $HOME/.kube/config 2>/dev/null || true
-        kubectl version --client
-        kubectl get nodes 2>&1 || echo "kubectl cluster access unavailable (expected if no kubeconfig)"
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v4
@@ -169,16 +147,16 @@ jobs:
     - name: Deploy ACR Secret to Kubernetes
       run: |
         DOCKER_CONFIG=$(echo "{\"auths\":{\"${{ env.ACR_NAME }}.azurecr.io\":{\"username\":\"${{ env.ACR_USERNAME }}\",\"password\":\"${{ env.ACR_PASSWORD }}\",\"email\":\"\",\"server\":\"${{ env.ACR_NAME }}.azurecr.io\"}}}" | base64 -w 0)
-        cat > /tmp/registry-secret.yaml << EOF
+        cat > /tmp/registry-secret.yaml << 'EOF'
         apiVersion: v1
         kind: Secret
         metadata:
           name: acr-secret
         data:
-          .dockerconfigjson: $DOCKER_CONFIG
+          .dockerconfigjson: PLACEHOLDER_DOCKER_CONFIG
         type: kubernetes.io/dockerconfigjson
         EOF
-        kubectl apply -f /tmp/registry-secret.yaml
+        sed "s|PLACEHOLDER_DOCKER_CONFIG|$DOCKER_CONFIG|g" /tmp/registry-secret.yaml | kubectl apply -f -
 
     - name: Update ConfigMap with Mongo IP
       run: |
@@ -198,6 +176,56 @@ jobs:
         kubectl apply -f k8s/service-account.yaml
         kubectl apply -f k8s/cluster-role-binding.yaml
         kubectl apply -f k8s/secrets.yaml
+
+    - name: Wait for LoadBalancer IP and Create Cloudflare DNS Record
+      if: always()
+      env:
+        CF_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+        CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      run: |
+        # Wait for the LoadBalancer to get an external IP
+        echo "Waiting for LoadBalancer external IP..."
+        TIMEOUT=300
+        INTERVAL=15
+        ELAPSED=0
+
+        while [ $ELAPSED -lt $TIMEOUT ]; do
+          LB_IP=$(kubectl get svc wiz-exercise-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          if [ -n "$LB_IP" ] && [ "$LB_IP" != "<none>" ]; then
+            echo "LoadBalancer IP found: $LB_IP"
+            echo "LB_IP=$LB_IP" >> $GITHUB_ENV
+            break
+          fi
+          echo "Waiting for LoadBalancer IP... ($ELAPSED/${TIMEOUT}s)"
+          sleep $INTERVAL
+          ELAPSED=$((ELAPSED + INTERVAL))
+        done
+
+        if [ -z "$LB_IP" ] || [ "$LB_IP" = "<none>" ]; then
+          echo "ERROR: LoadBalancer IP not assigned within timeout"
+          kubectl get svc wiz-exercise-service -o wide
+          exit 1
+        fi
+
+        # Check if DNS record already exists (idempotent)
+        EXISTING=$(curl -s "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records?type=A&name=app" \
+          -H "Authorization: Bearer $CF_API_TOKEN" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['result'][0]['id'] if data.get('result') else '')" 2>/dev/null || echo "")
+
+        if [ -n "$EXISTING" ]; then
+          echo "Updating existing DNS record $EXISTING"
+          curl -s -X PUT "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records/$EXISTING" \
+            -H "Authorization: Bearer $CF_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data "{\"type\":\"A\",\"name\":\"app\",\"content\":\"${LB_IP}\",\"ttl\":1,\"proxied\":true}"
+        else
+          echo "Creating new DNS record"
+          curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records" \
+            -H "Authorization: Bearer $CF_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data "{\"type\":\"A\",\"name\":\"app\",\"content\":\"${LB_IP}\",\"ttl\":1,\"proxied\":true}"
+        fi
+
+        echo "DNS record 'app.cloudguardian.xyz' created/updated pointing to $LB_IP"
 
     - name: Verify Deployment
       run: |
@@ -232,7 +260,6 @@ jobs:
         echo "Found state file, uploading to Azure Blob Storage..."
         STATE_FILE="terraform/terraform.tfstate"
 
-        # Upload using service principal auth via Azure CLI login
         TFSTATE_STORAGE_ACCOUNT=$(cd terraform && terraform output -raw storage_account_name 2>/dev/null)
 
         if [ -z "$TFSTATE_STORAGE_ACCOUNT" ]; then
@@ -241,7 +268,6 @@ jobs:
         fi
 
         echo "Uploading to storage account: $TFSTATE_STORAGE_ACCOUNT"
-        # Fetch storage account key (works with subscription-level Contributor role)
         TFSTATE_STORAGE_KEY=$(az storage account keys list \
           --account-name "$TFSTATE_STORAGE_ACCOUNT" \
           --resource-group "$RESOURCE_GROUP" \

@@ -48,11 +48,26 @@ jobs:
       run: |
         RUNNER_IP=$(curl -s https://api.ipify.org)
         echo "RUNNER_IP=$RUNNER_IP" >> $GITHUB_ENV
-        echo "Authorizing runner IP: $RUNNER_IP/32 for AKS API server access"
+
+        # Get current authorized IP ranges to preserve them
+        CURRENT_IPS=$(az aks show \
+          --resource-group "$RESOURCE_GROUP" \
+          --name "$AKS_CLUSTER_NAME" \
+          --query "apiServerAccessProfiles[0].authorizedIPRanges" -o tsv 2>/dev/null || echo "")
+
+        USER_IP="177.245.192.41/32"
+        echo "Current authorized IPs: $CURRENT_IPS"
+        echo "User IP: $USER_IP"
+        echo "Runner IP: $RUNNER_IP/32"
+
+        # Combine: user IP + runner IP (preserve user access)
+        COMBINED_IPS="$USER_IP,$RUNNER_IP/32"
+        echo "Setting authorized IPs to: $COMBINED_IPS"
+
         az aks update \
           --resource-group "$RESOURCE_GROUP" \
           --name "$AKS_CLUSTER_NAME" \
-          --api-server-authorized-ip-ranges "$RUNNER_IP/32"
+          --api-server-authorized-ip-ranges "$COMBINED_IPS"
 
     - name: Download Terraform State (if exists)
       continue-on-error: true
@@ -276,18 +291,23 @@ jobs:
         kubectl get ingress
         echo "App deployed successfully with tag: ${{ env.IMAGE_TAG }}"
 
-    - name: Cleanup - Remove Runner IP from AKS API Server
+    - name: Cleanup - Restore User IP to AKS API Server
       if: always()
       run: |
         RUNNER_IP="${{ env.RUNNER_IP }}"
+        USER_IP="177.245.192.41/32"
         if [ -n "$RUNNER_IP" ]; then
-          echo "Removing runner IP ($RUNNER_IP/32) from AKS API server authorized ranges"
+          echo "Removing runner IP ($RUNNER_IP/32), restoring user IP: $USER_IP"
           az aks update \
             --resource-group "$RESOURCE_GROUP" \
             --name "$AKS_CLUSTER_NAME" \
-            --api-server-authorized-ip-ranges ""
+            --api-server-authorized-ip-ranges "$USER_IP"
         else
-          echo "RUNNER_IP not set, skipping cleanup"
+          echo "RUNNER_IP not set, restoring user IP only"
+          az aks update \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$AKS_CLUSTER_NAME" \
+            --api-server-authorized-ip-ranges "$USER_IP"
         fi
 
     - name: Upload TF State to Azure Blob Storage

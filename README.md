@@ -156,9 +156,21 @@ Creates admin user in MongoDB.
 
 ## Usage Guide
 
-### Accessing the Application
+### AKS API Server IP Restrictions
 
-After deployment (app-deploy workflow):
+The AKS API server has **authorized IP ranges enabled** for security:
+
+| IP | Purpose | When Active |
+|---|---|---|
+| `177.245.192.41/32` | Your admin access | Always |
+| Runner IP | GitHub Actions deploy | Temporarily during workflow |
+
+**How it works:**
+1. **During Terraform apply**: Your IP (`177.245.192.41/32`) is set as the authorized range
+2. **During app-deploy**: Your IP + runner IP are both authorized (so GitHub Actions can deploy)
+3. **After cleanup**: Your IP is restored, runner IP is removed
+
+**Note:** Never run Terraform apply with empty `aks_authorized_ip_ranges` — Azure treats empty `[]` as "Not enabled" which allows **all public IPs** access. The workflow and variables.tf default both ensure at least your IP is always included.
 
 1. The workflow creates a Cloudflare DNS record `app.cloudguardian.xyz` pointing to the AKS LoadBalancer IP
 2. **App URL**: `http://app.cloudguardian.xyz/login`

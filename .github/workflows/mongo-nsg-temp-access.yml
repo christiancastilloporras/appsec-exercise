@@ -33,20 +33,6 @@ jobs:
       uses: azure/login@v3
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-    - name: Determine Mongo VM NSG resource group
-      id: rg_lookup
-      run: |
-        # Try to get RG from terraform state blob, fallback to known name
-        TFSTATE_STORAGE_ACCOUNT=$(az storage account list \
-          --resource-group "$RESOURCE_GROUP" \
-          --query "[?contains(name, 'wizbackup')].name | [0]" -o tsv 2>/dev/null || echo "")
-        if [ -n "$TFSTATE_STORAGE_ACCOUNT" ]; then
-          echo "storage_account=$TFSTATE_STORAGE_ACCOUNT" >> $GITHUB_OUTPUT
-        else
-          echo "storage_account=<none>" >> $GITHUB_OUTPUT
-        fi
-
     
     - name: Add NSG Rule (Allow ${{ inputs.ip_address }} to Mongo 27017)
       if: ${{ inputs.action == 'add' }}

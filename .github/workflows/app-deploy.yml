@@ -231,24 +231,32 @@ jobs:
         fi
 
         # Check if DNS record already exists (idempotent)
-        EXISTING=$(curl -s "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records?type=A&name=app" \
-          -H "Authorization: Bearer $CF_API_TOKEN" -H "Content-Type: application/json" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['result'][0]['id'] if data.get('result') else '')" 2>/dev/null || echo "")
+        # Get ALL existing records for app.cloudguardian.xyz and delete duplicates
+        ALL_RECORDS=$(curl -s "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records?type=A&name=app" \
+          -H "Authorization: Bearer $CF_API_TOKEN" -H "Content-Type: application/json")
 
-        if [ -n "$EXISTING" ]; then
-          echo "Updating existing DNS record $EXISTING"
-          curl -s -X PUT "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records/$EXISTING" \
-            -H "Authorization: Bearer $CF_API_TOKEN" \
-            -H "Content-Type: application/json" \
-            --data "{\"type\":\"A\",\"name\":\"app\",\"content\":\"${LB_IP}\",\"ttl\":1,\"proxied\":true}"
-        else
-          echo "Creating new DNS record"
-          curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records" \
-            -H "Authorization: Bearer $CF_API_TOKEN" \
-            -H "Content-Type: application/json" \
-            --data "{\"type\":\"A\",\"name\":\"app\",\"content\":\"${LB_IP}\",\"ttl\":1,\"proxied\":true}"
+        RECORD_COUNT=$(echo "$ALL_RECORDS" | python3 -c "import sys,json; data=json.load(sys.stdin); print(len(data.get('result', [])))" 2>/dev/null || echo "0")
+
+        if [ "$RECORD_COUNT" -gt 0 ]; then
+          echo "Found $RECORD_COUNT existing A record(s) for app.$CF_ZONE_ID"
+          # Delete all existing records first (cleanup)
+          RECORD_IDS=$(echo "$ALL_RECORDS" | python3 -c "import sys,json; data=json.load(sys.stdin); print(' '.join([r['id'] for r in data.get('result', [])]))" 2>/dev/null)
+          for RECORD_ID in $RECORD_IDS; do
+            echo "Deleting old record: $RECORD_ID"
+            curl -s -X DELETE "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records/$RECORD_ID" \
+              -H "Authorization: Bearer $CF_API_TOKEN" -H "Content-Type: application/json" > /dev/null
+          done
+          sleep 2  # Brief delay for propagation
         fi
 
-        echo "DNS record 'app.cloudguardian.xyz' created/updated pointing to $LB_IP"
+        # Create fresh DNS record
+        echo "Creating new DNS record for app.cloudguardian.xyz -> $LB_IP"
+        curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records" \
+          -H "Authorization: Bearer $CF_API_TOKEN" \
+          -H "Content-Type: application/json" \
+          --data "{\"type\":\"A\",\"name\":\"app\",\"content\":\"${LB_IP}\",\"ttl\":1,\"proxied\":true}"
+        echo ""
+        echo "DNS record 'app.cloudguardian.xyz' created pointing to $LB_IP"
 
         # Create Kubernetes TLS Secret from pre-generated Origin CA certificate
         # The cert and key should be provided as GitHub Secrets (CF_ORIGIN_CA_CERT, CF_ORIGIN_CA_KEY)

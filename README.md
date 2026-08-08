@@ -354,15 +354,29 @@ resource "azurerm_public_ip" "mongo_pip" {
 }
 ```
 
-MongoDB is installed post-boot via `null_resource.mongo_provision` (see `main.tf`):
+MongoDB is installed post-boot via cloud-init (see `main.tf`):
 - Downloads MongoDB 3.2.22 Linux x86_64 tarball
 - Extracts and copies binaries to `/usr/local/bin/`
-- Binds to `0.0.0.0:27017` (all interfaces)
+- Binds to `0.0.0.0:27017` (all interfaces, port 27017 restricted to AKS subnet via NSG)
 - Starts via cloud-init (`custom_data`) — robust startup independent of Terraform session
 - Runs as systemd service with `nohup mongod ... --fork` (survives VM reboot and session disconnect)
 - Includes startup validation: retries TCP check on 27017 for 60s, exits with error on failure
 - Logs to `/var/log/mongodb/mongod.log` and `/home/azureuser/logs/mongod.out`
 - Provisioning script: `terraform/scripts/start-mongod.sh`
+
+### Temporary IP Access to MongoDB
+
+A manual GitHub Actions workflow allows temporarily whitelisting a specific IP address for MongoDB access via port 27017 from the internet:
+
+```bash
+# Allow your IP
+gh workflow run mongo-nsg-temp-access.yml -f action=add -f ip_address=123.45.67.89
+
+# Remove your access
+gh workflow run mongo-nsg-temp-access.yml -f action=remove
+```
+
+The workflow creates an NSG rule `Mongo-Allow-IP` (priority 1051) on the `mongo-nsg` security group, allowing inbound TCP 27017 from a single IP address. Remove the rule when finished to restore the restricted security posture.
 
 ### Database Seeding (Idempotent)
 

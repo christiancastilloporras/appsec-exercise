@@ -224,7 +224,7 @@ jobs:
 
         # Check if DNS record already exists (idempotent)
         EXISTING=$(curl -s "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_records?type=A&name=app" \
-          -H "Authorization: Bearer $CF_API_TOKEN" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['result'][0]['id'] if data.get('result') else '')" 2>/dev/null || echo "")
+          -H "Authorization: Bearer $CF_API_TOKEN" -H "Content-Type: application/json" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['result'][0]['id'] if data.get('result') else '')" 2>/dev/null || echo "")
 
         if [ -n "$EXISTING" ]; then
           echo "Updating existing DNS record $EXISTING"
@@ -243,46 +243,64 @@ jobs:
         echo "DNS record 'app.cloudguardian.xyz' created/updated pointing to $LB_IP"
 
         # Request Cloudflare Origin CA Certificate for the domain
+        # NOTE: Requires "Zone - SSL and Certificates - Edit" permission on the API token
         CERT_HOSTNAME="app.cloudguardian.xyz"
         echo "Requesting Origin CA certificate for $CERT_HOSTNAME..."
-        # Use lowercase endpoint: /origin_ca/certificates (NOT /Origin_CA/certificates)
-        CA_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/origin_ca/certificates" \
-          -H "Authorization: Bearer $CF_API_TOKEN" \
-          -H "Content-Type: application/json" \
-          --data "{\"hostnames\":[\"$CERT_HOSTNAME\"],\"certificate_type\":\"origin-rsa\"}")
 
-        if echo "$CA_RESPONSE" | grep -q '"success":true'; then
-          echo "Origin CA certificate issued successfully"
-          # Extract certificate and private key using dedicated script
-          echo "$CA_RESPONSE" | python3 scripts/extract-origin-cert.py
-          # Validate certificate
-          openssl x509 -in /tmp/origin-cert.pem -text -noout | head -5
-          echo "Certificate validation passed"
+        # First check if we already have a valid cert (reuse if exists)
+        if [ -f "$HOME/.kube/tls-origin-cert.pem" ] && [ -f "$HOME/.kube/tls-origin-key.pem" ]; then
+          echo "Reusing existing Origin CA certificate"
+          cp "$HOME/.kube/tls-origin-cert.pem" /tmp/origin-cert.pem
+          cp "$HOME/.kube/tls-origin-key.pem" /tmp/origin-key.pem
         else
-          echo "Failed to issue Origin CA certificate:"
-          echo "$CA_RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$CA_RESPONSE"
-          exit 1
+          # Request new certificate via Cloudflare API
+          CA_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/origin_ca/certificates" \
+            -H "Authorization: Bearer $CF_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data "{\"hostnames\":[\"$CERT_HOSTNAME\"],\"certificate_type\":\"origin-rsa\"}")
+
+          if echo "$CA_RESPONSE" | grep -q '"success":true'; then
+            echo "Origin CA certificate issued successfully"
+            # Extract certificate and private key using dedicated script
+            echo "$CA_RESPONSE" | python3 scripts/extract-origin-cert.py
+            # Validate certificate
+            openssl x509 -in /tmp/origin-cert.pem -text -noout | head -5
+            echo "Certificate validation passed"
+            # Save for reuse in future deployments
+            mkdir -p $HOME/.kube
+            cp /tmp/origin-cert.pem "$HOME/.kube/tls-origin-cert.pem"
+            cp /tmp/origin-key.pem "$HOME/.kube/tls-origin-key.pem"
+          else
+            echo "Failed to issue Origin CA certificate (may need 'Zone - SSL and Certificates - Edit' permission)"
+            echo "API response: $CA_RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$CA_RESPONSE"
+            # Don't fail the entire deployment if cert fails - app still accessible via HTTP
+            echo "Continuing without TLS - app accessible via HTTP only"
+          fi
         fi
 
         # Create Kubernetes TLS Secret from the Origin CA certificate
-        kubectl create secret tls tls-origin-cert \
-          --cert=/tmp/origin-cert.pem \
-          --key=/tmp/origin-key.pem \
-          --dry-run=client -o yaml | kubectl apply -f -
-        echo "TLS secret 'tls-origin-cert' created"
+        if [ -f /tmp/origin-cert.pem ] && [ -f /tmp/origin-key.pem ]; then
+          kubectl create secret tls tls-origin-cert \
+            --cert=/tmp/origin-cert.pem \
+            --key=/tmp/origin-key.pem \
+            --dry-run=client -o yaml | kubectl apply -f -
+          echo "TLS secret 'tls-origin-cert' created"
 
-        # Update Ingress to use TLS with the Origin CA certificate
-        kubectl patch ingress wiz-exercise-ingress --type='merge' -p='{
-          "spec": {
-            "tls": [
-              {
-                "hosts": ["app.cloudguardian.xyz"],
-                "secretName": "tls-origin-cert"
-              }
-            ]
-          }
-        }'
-        echo "Ingress TLS configuration applied"
+          # Update Ingress to use TLS with the Origin CA certificate
+          kubectl patch ingress wiz-exercise-ingress --type='merge' -p='{
+            "spec": {
+              "tls": [
+                {
+                  "hosts": ["app.cloudguardian.xyz"],
+                  "secretName": "tls-origin-cert"
+                }
+              ]
+            }
+          }'
+          echo "Ingress TLS configuration applied"
+        else
+          echo "Skipping TLS configuration - certificates not available"
+        fi
 
     - name: Verify Deployment
       run: |

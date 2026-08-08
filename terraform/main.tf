@@ -4,17 +4,9 @@ terraform {
       source  = "hashicorp/azurerm"
       version = ">= 4.0, < 5.0"
     }
-    null = {
-      source  = "hashicorp/null"
-      version = "~> 3.0"
-    }
     random = {
       source  = "hashicorp/random"
       version = "~> 3.0"
-    }
-    time = {
-      source  = "hashicorp/time"
-      version = "~> 0.9"
     }
   }
 }
@@ -176,56 +168,14 @@ resource "azurerm_linux_virtual_machine" "mongo_vm" {
     storage_account_type = "Standard_LRS"
   }
 
-  # Wait for VM to be fully provisioned and IP to be available
-  # Using null_resource with local-exec to trigger provisioning post-creation
+  custom_data = base64encode(templatefile("${path.module}/scripts/start-mongod.sh.tftpl", {
+    # Variables can be passed here if needed
+  }))
 }
 
-# Separate resource to provision MongoDB after VM + IP are ready
-# Add a time_sleep to give VM time to boot and SSH to become available
-# Increased to 120s to ensure public IP is allocated and VM is ready for SSH
-resource "time_sleep" "mongo_wait" {
-  depends_on = [
-    azurerm_linux_virtual_machine.mongo_vm,
-    azurerm_public_ip.mongo_pip
-  ]
-  create_duration = "120s"
-}
-
-resource "null_resource" "mongo_provision" {
-  depends_on = [
-    azurerm_linux_virtual_machine.mongo_vm,
-    azurerm_public_ip.mongo_pip,
-    time_sleep.mongo_wait
-  ]
-
-  connection {
-    type        = "ssh"
-    user        = var.vm_admin_username
-    password    = var.vm_admin_password
-    host        = azurerm_public_ip.mongo_pip.ip_address
-    timeout     = "10m"
-  }
-
-  provisioner "remote-exec" {
-    inline = [
-      "sleep 30",
-      "curl -fsSL https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu1604-3.2.22.tgz -o /tmp/mongodb.tgz --retry 3 --retry-delay 5",
-      "mkdir -p /tmp/mongodb-extract",
-      "tar -xzf /tmp/mongodb.tgz -C /tmp/mongodb-extract",
-      "sudo cp -r /tmp/mongodb-extract/mongodb-linux-x86_64-ubuntu1604-3.2.22/bin/* /usr/local/bin/",
-      "sudo mkdir -p /data/db /var/log/mongodb",
-      # Ensure azureuser (the SSH login user) owns the data directory
-      "sudo chown -R $USER:$USER /data/db /var/log/mongodb",
-      # Start MongoDB as the login user (azureuser) via nohup
-      "nohup mongod --bind_ip 0.0.0.0 --dbpath /data/db --logpath /var/log/mongodb/mongod.log > /tmp/mongod.out 2>&1 &",
-      "sleep 15",  # Give mongod more time to start
-      "bash -c 'until ss -nat | grep -q :27017; do echo \"��⏳ Waiting for MongoDB...\" && sleep 2; done'",
-      "echo '��✅ MongoDB is running on port 27017'",
-      # Verify basic connectivity
-      "bash -c 'echo > /dev/tcp/127.0.0.1/27017' && echo '��✅ TCP connection successful or already connected'"
-    ]
-  }
-}
+# MongoDB is now provisioned via cloud-init (custom_data on the VM resource)
+# The startup script downloads, extracts, and starts MongoDB as a systemd service
+# This ensures MongoDB survives VM reboots and is properly daemonized
 
 # App VM NIC
 # (Removed - app now runs in AKS)

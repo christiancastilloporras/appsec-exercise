@@ -184,7 +184,6 @@ jobs:
     - name: Deploy K8s Manifests
       run: |
         sed "s|PLACEHOLDER_ACR|${{ env.ACR_NAME }}|g; s|PLACEHOLDER_TAG|${{ env.IMAGE_TAG }}|g; s|MONGO_IP_PLACEHOLDER|${{ env.MONGO_IP }}|g" k8s/deployment.yaml | kubectl apply -f -
-        sed "s|MONGO_IP_PLACEHOLDER|${{ env.MONGO_IP }}|g" k8s/configmap.yaml | kubectl apply -f -
         sed "s|MONGO_IP_PLACEHOLDER|${{ env.MONGO_IP }}|g" k8s/seed-script.yaml | kubectl apply -f -
         kubectl apply -f k8s/service.yaml
         kubectl apply -f k8s/ingress.yaml

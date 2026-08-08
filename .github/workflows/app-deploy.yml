@@ -125,15 +125,25 @@ jobs:
         echo "IMAGE_FULL=$FULL_IMAGE" >> $GITHUB_ENV
     - name: Run Trivy Vulnerability Scanner (non-blocking)
       continue-on-error: true
-      run: |
-        echo "Running Trivy vulnerability scan on Docker image..."
-        # Install Trivy
-        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-        # Scan the built image
-        trivy image --format table --output /tmp/trivy-results.txt "${{ env.ACR_NAME }}.azurecr.io/wiz-exercise:${{ env.IMAGE_TAG }}"
-        # Also export SARIF format for GitHub Security tab (non-blocking)
-        trivy image --format sarif --output /tmp/trivy-results.sarif "${{ env.ACR_NAME }}.azurecr.io/wiz-exercise:${{ env.IMAGE_TAG }}" || true
-        echo "Trivy scan complete. Results are in the artifacts."
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: '${{ env.ACR_NAME }}.azurecr.io/wiz-exercise:${{ env.IMAGE_TAG }}'
+        format: 'table'
+        output: '/tmp/trivy-results.txt'
+        severity: 'CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN'
+        ignore-unfixed: true
+        exit-code: '0'  # Never fail the build - non-blocking
+        ignore-policy: ''  # No policy overrides
+        vuln-type: 'os,library'  # Scan both OS packages and language libraries
+    - name: Generate SARIF Report
+      if: always()
+      continue-on-error: true
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: '${{ env.ACR_NAME }}.azurecr.io/wiz-exercise:${{ env.IMAGE_TAG }}'
+        format: 'sarif'
+        output: '/tmp/trivy-results.sarif'
+        exit-code: '0'  # Non-blocking
     - name: Upload Trivy Scan Results
       if: always()
       uses: actions/upload-artifact@v5

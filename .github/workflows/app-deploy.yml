@@ -265,11 +265,22 @@ jobs:
 
         if [ -n "$CF_ORIGIN_CA_CERT" ] && [ -n "$CF_ORIGIN_CA_KEY" ]; then
           echo "Using pre-generated Origin CA certificate from GitHub secrets"
-          # Use printf to preserve multi-line PEM content
-          printf '%s\n' "$CF_ORIGIN_CA_CERT" > /tmp/origin-cert.pem
-          printf '%s\n' "$CF_ORIGIN_CA_KEY" > /tmp/origin-key.pem
+
+          # Try base64 decoding first (recommended for multi-line PEM secrets in GitHub Actions)
+          # If your secrets are stored as raw PEM, remove the base64 -d line
+          if echo "$CF_ORIGIN_CA_CERT" | grep -q 'BEGIN CERTIFICATE'; then
+            # Raw PEM format - no base64 encoding
+            printf '%s\n' "$CF_ORIGIN_CA_CERT" > /tmp/origin-cert.pem
+            printf '%s\n' "$CF_ORIGIN_CA_KEY" > /tmp/origin-key.pem
+          else
+            # Assume base64-encoded (recommended for GitHub secrets)
+            echo "$CF_ORIGIN_CA_CERT" | base64 -d > /tmp/origin-cert.pem
+            echo "$CF_ORIGIN_CA_KEY" | base64 -d > /tmp/origin-key.pem
+          fi
 
           # Validate certificate
+          echo "Cert file size: $(wc -c < /tmp/origin-cert.pem) bytes"
+          echo "Key file size: $(wc -c < /tmp/origin-key.pem) bytes"
           openssl x509 -in /tmp/origin-cert.pem -text -noout | head -5
           openssl rsa -in /tmp/origin-key.pem -check -noout 2>/dev/null || echo "Key format validation skipped"
 

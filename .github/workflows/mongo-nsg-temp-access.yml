@@ -1,0 +1,90 @@
+name: MongoDB NSG Temporary Access
+
+on:
+  workflow_dispatch:
+    inputs:
+      ip_address:
+        description: "Public IP address to grant temporary MongoDB access (e.g., 123.45.67.89)"
+        required: true
+        type: string
+      action:
+        description: "Action to perform"
+        required: true
+        type: choice
+        default: "add"
+        options:
+          - add
+          - remove
+
+env:
+  RESOURCE_GROUP: wiz-exercise-rg
+  NSG_NAME: mongo-nsg
+  NSG_RULE_NAME: Mongo-Allow-IP
+  NSG_RULE_PRIORITY: 1051
+
+jobs:
+  manage-nsg-rule:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+
+    - name: Azure Login
+      uses: azure/login@v3
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Determine Mongo VM NSG resource group
+      id: rg_lookup
+      run: |
+        # Try to get RG from terraform state blob, fallback to known name
+        TFSTATE_STORAGE_ACCOUNT=$(az storage account list \
+          --resource-group "$RESOURCE_GROUP" \
+          --query "[?contains(name, 'wizbackup')].name | [0]" -o tsv 2>/dev/null || echo "")
+        if [ -n "$TFSTATE_STORAGE_ACCOUNT" ]; then
+          echo "storage_account=$TFSTATE_STORAGE_ACCOUNT" >> $GITHUB_OUTPUT
+        else
+          echo "storage_account=<none>" >> $GITHUB_OUTPUT
+        fi
+
+    
+    - name: Add NSG Rule (Allow ${{ inputs.ip_address }} to Mongo 27017)
+      if: ${{ inputs.action == 'add' }}
+      run: |
+        IP="${{ inputs.ip_address }}"
+        # Validate it's a proper IP format
+        if ! [[ "$IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(/[0-9]+)?$ ]]; then
+          echo "Invalid IP address format: $IP"
+          exit 1
+        fi
+        
+        echo "Adding NSG rule '$NSG_RULE_NAME' (priority $NSG_RULE_PRIORITY) for $IP -> 27017 on $NSG_NAME"
+        
+        az network nsg rule create \
+          --resource-group "$RESOURCE_GROUP" \
+          --nsg-name "$NSG_NAME" \
+          --name "$NSG_RULE_NAME" \
+          --priority "$NSG_RULE_PRIORITY" \
+          --direction Inbound \
+          --access Allow \
+          --protocol Tcp \
+          --source-address-prefixes "$IP" \
+          --source-port-ranges '*' \
+          --destination-address-prefixes '*' \
+          --destination-port-ranges 27017 \
+          --description "Temporary access for ${{ github.actor }} (${IP})"
+        
+        echo "--- Current NSG rules on $NSG_NAME ---"
+        az network nsg rule list --resource-group "$RESOURCE_GROUP" --nsg-name "$NSG_NAME" --query "[].{Name:name, Priority:priority, Source:sourceAddressPrefix, Dest:.destinationPortRange}" -o table
+
+    - name: Remove NSG Rule
+      if: ${{ inputs.action == 'remove' }}
+      run: |
+        echo "Removing NSG rule '$NSG_RULE_NAME' from $NSG_NAME"
+        az network nsg rule delete \
+          --resource-group "$RESOURCE_GROUP" \
+          --nsg-name "$NSG_NAME" \
+          --name "$NSG_RULE_NAME" || echo "Rule '$NSG_RULE_NAME' did not exist or was already removed."
+
+        echo "--- Remaining NSG rules on $NSG_NAME ---"
+        az network nsg rule list --resource-group "$RESOURCE_GROUP" --nsg-name "$NSG_NAME" --query "[].{Name:name, Priority:priority, Source:sourceAddressPrefix, Dest:destinationPortRange}" -o table

@@ -196,35 +196,44 @@ The app-deploy workflow handles Cloudflare DNS automatically:
 
 This project uses **Cloudflare Origin CA Certificate** for TLS termination between Cloudflare and the AKS LoadBalancer.
 
-#### Manual Certificate Setup (recommended)
+#### TLS Setup (Recommended: Pre-generated Origin CA Certificate)
 
-1. Go to **Cloudflare Dashboard → SSL/TLS → Origin Certificates → Create Certificate**
-2. Choose **"Let Cloudflare generate the private key pair"**
-3. Set **Hostname(s)** to `*.cloudguardian.xyz` (wildcard) or `app.cloudguardian.xyz` (specific)
-4. Select **"RSA"** certificate type
-5. Download both:
-   - `origin.pem` (certificate)
-   - `origin-key.pem` (private key)
-6. Create the Kubernetes TLS secret:
-   ```bash
-   kubectl -n default create secret tls tls-origin-cert \
-     --cert=origin.pem \
-     --key=origin-key.pem
-   ```
-7. Set **Cloudflare SSL/TLS → Overview → SSL/TLS encryption** to **"Full"** mode
+This approach is simpler and more reliable than API-based certificate generation:
 
-#### Automated Certificate Setup (workflow)
+1. **Generate Origin CA Certificate manually**:
+   - Go to **Cloudflare Dashboard → SSL/TLS → Origin Certificates → Create Certificate**
+   - Choose **"Let Cloudflare generate the private key pair"**  
+   - Set **Hostname(s)** to `*.cloudguardian.xyz` (wildcard) or `app.cloudguardian.xyz`
+   - Select **"RSA"** certificate type
+   - Click **Next** and download both files:
+     - `origin.pem` (certificate)
+     - `origin-key.pem` (private key)
 
-The `app-deploy.yml` workflow attempts to create Origin CA certificates automatically:
-- Requires `Zone - SSL and Certificates - Edit` permission on the Cloudflare API token
-- If this fails, the workflow continues without TLS (HTTP-only)
-- You can manually create the cert afterward using the steps above
+2. **Add to GitHub Secrets**:
+   - Go to GitHub Repo → Settings → Secrets and variables → Actions
+   - Add new repository secrets:
+     - `CF_ORIGIN_CA_CERT` → contents of `origin.pem`
+     - `CF_ORIGIN_CA_KEY` → contents of `origin-key.pem`
 
-#### Required Cloudflare API Token Permissions
+3. **Set Cloudflare SSL/TLS Mode**:
+   - Go to **Cloudflare Dashboard → SSL/TLS → Overview**
+   - Set **SSL/TLS encryption** to **"Full"** mode
 
-For full automated setup, the `CLOUDFLARE_API_TOKEN` should include:
-- `Zone - DNS - Edit` (for DNS record management)
-- `Zone - SSL and Certificates - Edit` (for Origin CA certificate management)
+4. **Workflow handles the rest**:
+   - The `app-deploy.yml` workflow reads the secrets, validates them, creates the TLS secret, and patches the ingress TLS configuration automatically
+
+#### Fallback (No TLS)
+If `CF_ORIGIN_CA_CERT` is not set, the workflow deploys the app with HTTP-only access (no HTTPS).
+
+#### Required Secrets
+
+| Secret | Purpose | Required |
+|---|---|---|
+| `AZURE_CREDENTIALS` | Azure service principal for Terraform deploy | ✅ |
+| `CLOUDFLARE_ZONE_ID` | Zone ID for `cloudguardian.xyz` | ✅ |
+| `CLOUDFLARE_API_TOKEN` | API token with `Zone:DNS:Edit` permission | ✅ |
+| `CF_ORIGIN_CA_CERT` | Pre-generated Origin CA certificate (PEM) | Optional (for HTTPS) |
+| `CF_ORIGIN_CA_KEY` | Pre-generated Origin CA private key (PEM) | Optional (for HTTPS) |
 
 ### Kubeconfig Artifact
 

@@ -242,49 +242,34 @@ jobs:
 
         echo "DNS record 'app.cloudguardian.xyz' created/updated pointing to $LB_IP"
 
-        # Request Cloudflare Origin CA Certificate for the domain
-        # NOTE: Requires "Zone - SSL and Certificates - Edit" permission on the API token
-        CERT_HOSTNAME="app.cloudguardian.xyz"
-        echo "Requesting Origin CA certificate for $CERT_HOSTNAME..."
+        # Create Kubernetes TLS Secret from pre-generated Origin CA certificate
+        # The cert and key should be provided as GitHub Secrets (CF_ORIGIN_CA_CERT, CF_ORIGIN_CA_KEY)
+        # These can be generated manually via Cloudflare Dashboard -> SSL/TLS -> Origin Certificates -> Create Certificate
+        # Use hostname: *.cloudguardian.xyz or app.cloudguardian.xyz, Type: RSA
+        #
+        # Steps:
+        # 1. Go to https://dash.cloudflare.com -> SSL/TLS -> Origin Certificates -> Create Certificate
+        # 2. Let Cloudflare generate private key pair
+        # 3. Hostname: *.cloudguardian.xyz (wildcard recommended)
+        # 4. Certificate type: RSA
+        # 5. Download both certificate and private key
+        # 6. Add to GitHub repo secrets as CF_ORIGIN_CA_CERT and CF_ORIGIN_CA_KEY
 
-        # First check if we already have a valid cert (reuse if exists)
-        if [ -f "$HOME/.kube/tls-origin-cert.pem" ] && [ -f "$HOME/.kube/tls-origin-key.pem" ]; then
-          echo "Reusing existing Origin CA certificate"
-          cp "$HOME/.kube/tls-origin-cert.pem" /tmp/origin-cert.pem
-          cp "$HOME/.kube/tls-origin-key.pem" /tmp/origin-key.pem
-        else
-          # Request new certificate via Cloudflare API
-          CA_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/origin_ca/certificates" \
-            -H "Authorization: Bearer $CF_API_TOKEN" \
-            -H "Content-Type: application/json" \
-            --data "{\"hostnames\":[\"$CERT_HOSTNAME\"],\"certificate_type\":\"origin-rsa\"}")
+        if [ -n "${{ secrets.CF_ORIGIN_CA_CERT }}" ] && [ -n "${{ secrets.CF_ORIGIN_CA_KEY }}" ]; then
+          echo "Using pre-generated Origin CA certificate from GitHub secrets"
+          echo "${{ secrets.CF_ORIGIN_CA_CERT }}" > /tmp/origin-cert.pem
+          echo "${{ secrets.CF_ORIGIN_CA_KEY }}" > /tmp/origin-key.pem
 
-          if echo "$CA_RESPONSE" | grep -q '"success":true'; then
-            echo "Origin CA certificate issued successfully"
-            # Extract certificate and private key using dedicated script
-            echo "$CA_RESPONSE" | python3 scripts/extract-origin-cert.py
-            # Validate certificate
-            openssl x509 -in /tmp/origin-cert.pem -text -noout | head -5
-            echo "Certificate validation passed"
-            # Save for reuse in future deployments
-            mkdir -p $HOME/.kube
-            cp /tmp/origin-cert.pem "$HOME/.kube/tls-origin-cert.pem"
-            cp /tmp/origin-key.pem "$HOME/.kube/tls-origin-key.pem"
-          else
-            echo "Failed to issue Origin CA certificate (may need 'Zone - SSL and Certificates - Edit' permission)"
-            echo "API response: $CA_RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$CA_RESPONSE"
-            # Don't fail the entire deployment if cert fails - app still accessible via HTTP
-            echo "Continuing without TLS - app accessible via HTTP only"
-          fi
-        fi
+          # Validate certificate
+          openssl x509 -in /tmp/origin-cert.pem -text -noout | head -5
+          openssl rsa -in /tmp/origin-key.pem -check -noout 2>/dev/null || echo "Key format validation skipped"
 
-        # Create Kubernetes TLS Secret from the Origin CA certificate
-        if [ -f /tmp/origin-cert.pem ] && [ -f /tmp/origin-key.pem ]; then
+          # Create Kubernetes TLS Secret
           kubectl create secret tls tls-origin-cert \
             --cert=/tmp/origin-cert.pem \
             --key=/tmp/origin-key.pem \
             --dry-run=client -o yaml | kubectl apply -f -
-          echo "TLS secret 'tls-origin-cert' created"
+          echo "TLS secret 'tls-origin-cert' created from pre-generated certificate"
 
           # Update Ingress to use TLS with the Origin CA certificate
           kubectl patch ingress wiz-exercise-ingress --type='merge' -p='{
@@ -299,7 +284,8 @@ jobs:
           }'
           echo "Ingress TLS configuration applied"
         else
-          echo "Skipping TLS configuration - certificates not available"
+          echo "CF_ORIGIN_CA_CERT secret not found - skipping TLS configuration"
+          echo "To enable HTTPS: create Origin CA cert via Cloudflare dashboard and add CF_ORIGIN_CA_CERT + CF_ORIGIN_CA_KEY secrets"
         fi
 
     - name: Verify Deployment

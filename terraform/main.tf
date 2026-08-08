@@ -173,9 +173,51 @@ resource "azurerm_linux_virtual_machine" "mongo_vm" {
   }))
 }
 
-# MongoDB is now provisioned via cloud-init (custom_data on the VM resource)
-# The startup script downloads, extracts, and starts MongoDB as a systemd service
+# MongoDB is provisioned via cloud-init (custom_data on the VM resource)
+# The startup script downloads, extracts, and starts MongoDB as a daemon
 # This ensures MongoDB survives VM reboots and is properly daemonized
+
+# Wait for cloud-init to finish and MongoDB to be ready on private IP
+resource "null_resource" "mongo_wait_for_ready" {
+  depends_on = [
+    azurerm_linux_virtual_machine.mongo_vm,
+    azurerm_public_ip.mongo_pip
+  ]
+
+  connection {
+    type        = "ssh"
+    user        = var.vm_admin_username
+    password    = var.vm_admin_password
+    host        = azurerm_public_ip.mongo_pip.ip_address
+    timeout     = "15m"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      # Wait for cloud-init to complete (mongod startup is via cloud-init)
+      "echo 'Waiting for cloud-init to complete...'",
+      "cloud-init status --wait 2>/dev/null || echo 'cloud-init status not available, continuing'",
+      # Wait for MongoDB to listen on private IP (the actual address AKS uses)
+      "for i in $(seq 1 60); do",
+      "  if bash -c 'echo > /dev/tcp/${azurerm_network_interface.mongo_nic.private_ip_address}/27017' 2>/dev/null; then",
+      "    echo '✅ MongoDB is reachable on private IP ${azurerm_network_interface.mongo_nic.private_ip_address}:27017'",
+      "    exit 0",
+      "  else",
+      "    echo \"⏳ MongoDB not ready yet (attempt $i/60)...\"",
+      "    sleep 10",
+      "  fi",
+      "done",
+      "echo '❌ MongoDB did not become reachable on port 27017 within 600s'",
+      "echo '=== mongod.out ==='",
+      "cat /home/${var.vm_admin_username}/logs/mongod.out 2>/dev/null || true",
+      "echo '=== mongod.log ==='",
+      "cat /var/log/mongodb/mongod.log 2>/dev/null || true",
+      "echo '=== processes ==='",
+      "ps aux | grep mongod || true",
+      "exit 1"
+    ]
+  }
+}
 
 # App VM NIC
 # (Removed - app now runs in AKS)

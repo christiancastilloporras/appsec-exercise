@@ -227,6 +227,20 @@ jobs:
 
         echo "DNS record 'app.cloudguardian.xyz' created/updated pointing to $LB_IP"
 
+        # Set Cloudflare SSL to Flexible mode (terminate SSL at Cloudflare edge, HTTP to origin)
+        curl -s -X PATCH "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/settings/ssl" \
+          -H "Authorization: Bearer $CF_API_TOKEN" \
+          -H "Content-Type: application/json" \
+          --data '{"value":"flexible"}' | python3 -m json.tool || echo "SSL mode set attempted"
+
+        # Enable Always Use HTTPS (redirect HTTP to HTTPS at Cloudflare edge)
+        curl -s -X PATCH "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/settings/always_use_https" \
+          -H "Authorization: Bearer $CF_API_TOKEN" \
+          -H "Content-Type: application/json" \
+          --data '{"value":"on"}' || echo "Always Use HTTPS set attempted"
+
+        echo "Cloudflare SSL Flexible mode configured"
+
     - name: Verify Deployment
       run: |
         kubectl rollout status deployment/wiz-exercise-app --timeout=120s

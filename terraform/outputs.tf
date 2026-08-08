@@ -1,12 +1,15 @@
+output "mongo_connection_string" {
+  # Public IP for external access (MongoDB Compass, mongosh, etc.)
+  # Requires NSG rule allowing your IP on port 27017
+  value = "mongodb://${azurerm_public_ip.mongo_pip.ip_address}:27017/admin-app"
+}
+
 output "mongo_vm_public_ip" {
   value = azurerm_public_ip.mongo_pip.ip_address
 }
 
-output "mongo_connection_string" {
-  value = "mongodb://${azurerm_network_interface.mongo_nic.private_ip_address}:27017/admin-app"
-}
-
 output "mongo_vm_private_ip" {
+  # Private IP for internal AKS app connections
   value = azurerm_network_interface.mongo_nic.private_ip_address
 }
 

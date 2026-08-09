@@ -32,9 +32,9 @@ variable "aks_authorized_ip_ranges" {
 
 variable "cloudflare_ip_ranges" {
   type        = list(string)
-  description = "Cloudflare IPv4 ranges for NSG rules. See https://www.cloudflare.com/ips/ for current values. Note: Azure NSG rules cannot mix IPv4 and IPv6 in the same rule, so only IPv4 ranges are included here. Use separate rules for IPv6 if needed."
+  description = "Cloudflare IPv4 ranges for NSG rules. See https://www.cloudflare.com/ips-v4/ for current values. Note: Azure NSG rules cannot mix IPv4 and IPv6 in the same rule, so only IPv4 ranges are included here. Use separate rules for IPv6 if needed."
   default = [
-    # Cloudflare IPv4 ranges
+    # Cloudflare IPv4 ranges (from https://www.cloudflare.com/ips-v4/)
     "173.245.48.0/20",
     "103.21.244.0/22",
     "103.22.200.0/22",
@@ -43,10 +43,12 @@ variable "cloudflare_ip_ranges" {
     "108.162.192.0/18",
     "190.93.240.0/20",
     "188.114.96.0/20",
-    "188.114.112.0/20",
-    "141.101.64.0/18",
-    "103.21.244.0/22",
+    "197.234.240.0/22",
+    "198.41.128.0/17",
+    "162.158.0.0/15",
+    "104.16.0.0/13",
+    "104.24.0.0/14",
     "172.64.0.0/13",
-    "104.16.0.0/8",
+    "131.0.72.0/22",
   ]
 }

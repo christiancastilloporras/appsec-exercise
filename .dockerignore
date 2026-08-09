@@ -1,0 +1,38 @@
+# Version control
+.git/
+.gitignore
+
+# CI/CD workflows
+.github/
+
+# Infrastructure as code
+terraform/
+k8s/
+
+# Documentation
+README.md
+*.md
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Already copied separately or not needed in container
+Dockerfile
+.dockerignore

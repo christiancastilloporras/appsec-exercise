@@ -3,7 +3,7 @@ kind: Ingress
 metadata:
   name: wiz-exercise-ingress
 spec:
-  ingressClassName: webapprouting
+  ingressClassName: webapprouting.kubernetes.azure.com
   rules:
   - host: app.cloudguardian.xyz
     http:

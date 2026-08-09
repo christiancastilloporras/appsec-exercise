@@ -341,12 +341,13 @@ jobs:
         
         # Test app via service directly (bypasses ingress for troubleshooting)
         echo "=== Testing via port-forward ==="
-        kubectl port-forward svc/wiz-exercise-service 8080:80 --timeout=30s &
+        kubectl port-forward svc/wiz-exercise-service 8080:80 &
+        PORT_FORWARD_PID=$!
         sleep 5
         curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" http://localhost:8080/ || echo "Port-forward test failed"
         curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" http://localhost:8080/login || echo "Login page test failed"
         curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" http://localhost:8080/api/status || echo "API status test failed"
-        kill %1 2>/dev/null || true
+        kill $PORT_FORWARD_PID 2>/dev/null || true
         
         echo "App deployed successfully with tag: ${{ env.IMAGE_TAG }}"
 

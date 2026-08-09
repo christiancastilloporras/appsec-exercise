@@ -262,9 +262,10 @@ resource "azurerm_kubernetes_cluster" "aks" {
   workload_identity_enabled = true
 
   # Enable Application Routing add-on (replaces deprecated http_application_routing)
+  # This creates the webapprouting.kubernetes.azure.com ingress controller
   web_app_routing {
     dns_zone_ids = []
-
+    # The ingress class is webapprouting.kubernetes.azure.com
   }
 
   network_profile {

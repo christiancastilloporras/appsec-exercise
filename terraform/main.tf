@@ -239,6 +239,84 @@ resource "azurerm_subnet" "aks_subnet" {
   # }
 }
 
+# Network Security Group for AKS cluster - only allows Cloudflare IPs
+# Cloudflare publishes their IP ranges at https://www.cloudflare.com/ips/
+resource "azurerm_network_security_group" "aks_nsg" {
+  name                = "aks-app-nsg"
+  location            = azurerm_resource_group.wiz_exercise.location
+  resource_group_name = azurerm_resource_group.wiz_exercise.name
+
+  # Allow HTTP from Cloudflare + authorized IPs
+  security_rule {
+    name                       = "Allow-Cloudflare-HTTP"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "80"
+    source_address_prefixes    = concat(var.cloudflare_ip_ranges, var.aks_authorized_ip_ranges)
+    destination_address_prefix = "*"
+  }
+
+  # Allow HTTPS from Cloudflare + authorized IPs
+  security_rule {
+    name                       = "Allow-Cloudflare-HTTPS"
+    priority                   = 101
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefixes    = concat(var.cloudflare_ip_ranges, var.aks_authorized_ip_ranges)
+    destination_address_prefix = "*"
+  }
+
+  # Allow AKS API server (for kubectl access via API server authorized IPs)
+  security_rule {
+    name                       = "Allow-AKS-API"
+    priority                   = 102
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefixes    = var.aks_authorized_ip_ranges
+    destination_address_prefix = "*"
+  }
+
+  # Allow internal health probes
+  security_rule {
+    name                       = "Allow-Internal-Health"
+    priority                   = 103
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "VirtualNetwork"
+    destination_address_prefix = "*"
+  }
+
+  # Allow load balancer health probes
+  security_rule {
+    name                       = "Allow-LB-Health-Probes"
+    priority                   = 104
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "AzureLoadBalancer"
+    destination_address_prefix = "*"
+  }
+}
+
+# Associate NSG with AKS subnet (required for AZurerm provider v4+)
+resource "azurerm_subnet_network_security_group_association" "aks_nsg_assoc" {
+  subnet_id                 = azurerm_subnet.aks_subnet.id
+  network_security_group_id = azurerm_network_security_group.aks_nsg.id
+}
 # AKS Cluster - uses same VNet as Mongo VM
 resource "azurerm_kubernetes_cluster" "aks" {
   name                = "wiz-aks-cluster"

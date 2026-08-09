@@ -27,5 +27,34 @@ variable "mongo_version" {
 variable "aks_authorized_ip_ranges" {
   type        = list(string)
   description = "List of CIDRs allowed to access AKS API server. Must include at least one IP to enable authorized IP ranges feature. Default: user's IP for initial access."
-  default     = ["177.245.192.41/32"]  # User's public IP - enables authorized IP ranges
+  default     = ["177.245.192.41/32"] # User's public IP - enables authorized IP ranges
+}
+
+variable "cloudflare_ip_ranges" {
+  type        = list(string)
+  description = "Cloudflare IP ranges for NSG rules. See https://www.cloudflare.com/ips/ for current values."
+  default = [
+    # Cloudflare IPv4 ranges
+    "173.245.48.0/20",
+    "103.21.244.0/22",
+    "103.22.200.0/22",
+    "103.31.4.0/22",
+    "141.101.64.0/18",
+    "108.162.192.0/18",
+    "190.93.240.0/20",
+    "188.114.96.0/20",
+    "188.114.112.0/20",
+    "141.101.64.0/18",
+    "103.21.244.0/22",
+    "172.64.0.0/13",
+    "104.16.0.0/8",
+    "172.126.0.0/16",
+    # Cloudflare IPv6 ranges
+    "2400:cb00::/32",
+    "2606:4700::/32",
+    "2803:f800::/32",
+    "2405:b500::/32",
+    "2a06:4880::/32",
+    "2c0f:fff0::/32",
+  ]
 }

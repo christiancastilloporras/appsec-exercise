@@ -335,10 +335,15 @@ This project contains **intentionally vulnerable components** for educational/se
 
 ### Network Security Rules
 
-| Port | Protocol | Source | Purpose |
-|------|----------|--------|---------|
-| 22 | TCP | `*` (world) | SSH to Mongo VM |
-| 27017 | TCP | `10.0.2.0/24` (AKS) | MongoDB (AKS only) |
+| Priority | Name | Ports | Source | Purpose |
+|---|---|---|---|---|
+| 100 | `Allow-Cloudflare-HTTP` | 80 | Cloudflare IPs + authorized IPs | Web traffic (HTTP via Cloudflare) |
+| 101 | `Allow-Cloudflare-HTTPS` | 443 | Cloudflare IPs + authorized IPs | Web traffic (HTTPS via Cloudflare) |
+| 102 | `Allow-AKS-API` | 443 | Authorized IP ranges | AKS API server access |
+| 103 | `Allow-Internal-Health` | * | VirtualNetwork | Internal health probes |
+| 104 | `Allow-LB-Health-Probes` | * | AzureLoadBalancer | Azure LB health probes |
+
+**Note:** The default NSG behavior denies all inbound traffic not matching an allow rule, providing a zero-trust posture for the AKS cluster nodes.
 
 ### Terraform Variables
 
@@ -351,6 +356,7 @@ This project contains **intentionally vulnerable components** for educational/se
 | `vm_admin_password` | `P@ssw0rd1234!` | Admin password for Mongo VM |
 | `mongo_version` | `3.2.22` | MongoDB version (intentionally vulnerable) |
 | `aks_authorized_ip_ranges` | `[]` | List of CIDRs for AKS API server access (empty = block all) |
+| `cloudflare_ip_ranges` | Cloudflare IPs | IP ranges for NSG rules (Cloudflare proxy traffic) |
 
 ### AKS Cluster Configuration
 

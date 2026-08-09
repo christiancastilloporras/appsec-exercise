@@ -246,7 +246,7 @@ resource "azurerm_network_security_group" "aks_nsg" {
   location            = azurerm_resource_group.wiz_exercise.location
   resource_group_name = azurerm_resource_group.wiz_exercise.name
 
-  # Allow HTTP from Cloudflare + authorized IPs
+  # Allow HTTP from Cloudflare only (ports 80/443 are for web traffic)
   security_rule {
     name                       = "Allow-Cloudflare-HTTP"
     priority                   = 100
@@ -255,11 +255,11 @@ resource "azurerm_network_security_group" "aks_nsg" {
     protocol                   = "Tcp"
     source_port_range          = "*"
     destination_port_range     = "80"
-    source_address_prefixes    = concat(var.cloudflare_ip_ranges, var.aks_authorized_ip_ranges)
+    source_address_prefixes    = var.cloudflare_ip_ranges
     destination_address_prefix = "*"
   }
 
-  # Allow HTTPS from Cloudflare + authorized IPs
+  # Allow HTTPS from Cloudflare only
   security_rule {
     name                       = "Allow-Cloudflare-HTTPS"
     priority                   = 101
@@ -268,7 +268,7 @@ resource "azurerm_network_security_group" "aks_nsg" {
     protocol                   = "Tcp"
     source_port_range          = "*"
     destination_port_range     = "443"
-    source_address_prefixes    = concat(var.cloudflare_ip_ranges, var.aks_authorized_ip_ranges)
+    source_address_prefixes    = var.cloudflare_ip_ranges
     destination_address_prefix = "*"
   }
 

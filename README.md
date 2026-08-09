@@ -337,8 +337,8 @@ This project contains **intentionally vulnerable components** for educational/se
 
 | Priority | Name | Ports | Source | Purpose |
 |---|---|---|---|---|
-| 100 | `Allow-Cloudflare-HTTP` | 80 | Cloudflare IPs + authorized IPs | Web traffic (HTTP via Cloudflare) |
-| 101 | `Allow-Cloudflare-HTTPS` | 443 | Cloudflare IPs + authorized IPs | Web traffic (HTTPS via Cloudflare) |
+| 100 | `Allow-Cloudflare-HTTP` | 80 | Cloudflare IPs | Web traffic (HTTP via Cloudflare) |
+| 101 | `Allow-Cloudflare-HTTPS` | 443 | Cloudflare IPs | Web traffic (HTTPS via Cloudflare) |
 | 102 | `Allow-AKS-API` | 443 | Authorized IP ranges | AKS API server access |
 | 103 | `Allow-Internal-Health` | * | VirtualNetwork | Internal health probes |
 | 104 | `Allow-LB-Health-Probes` | * | AzureLoadBalancer | Azure LB health probes |

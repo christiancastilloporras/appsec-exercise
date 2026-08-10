@@ -36,3 +36,9 @@ Thumbs.db
 # Already copied separately or not needed in container
 Dockerfile
 .dockerignore
+
+# Graphify outputs
+graphify-out/
+
+# Analysis and interview docs
+docs/

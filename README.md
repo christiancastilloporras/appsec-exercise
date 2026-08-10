@@ -23,7 +23,7 @@ Internet
 | Component | Resource | Purpose |
 |---|---|---|
 | `app.py` | Flask routes | `/` (index), `/login` (auth), `/api/contacts` (REST), `/<username>/contacts` (CRUD) |
-| `seed_db.py` | DB init | Creates `admin`/`admin123` user in MongoDB `admin-app` database |
+| `seed_db.py` | DB init | Creates `admin`/`admin123` app user in MongoDB `admin-app` database (requires MongoDB auth enabled by `start-mongod.sh`) |
 | `terraform/main.tf` | Azure infra | VMs, AKS, ACR, networking, storage |
 | `terraform/outputs.tf` | TF outputs | Public/private IPs, connection strings, kubeconfig |
 | `.github/workflows/app-deploy.yml` | CI/CD | Build → push → deploy to AKS |
@@ -53,27 +53,33 @@ WIZ-exercise/
 │   ├── login.html      # Login page
 │   └── dashboard.html  # Admin dashboard
 ├── k8s/
-│   ├── configmap.yaml      # K8s ConfigMap (MONGO_URI)
-│   ├── deployment.yaml     # K8s Deployment (Flask app + ClusterAdmin)
-│   ├── service.yaml        # K8s Service
-│   ├── ingress.yaml        # K8s Ingress
-│   ├── registry-secret.yaml # ACR auth Secret
-│   ├── service-account.yaml # Service Account (ClusterAdmin)
-│   ├── secrets.yaml        # K8s Secrets
-│   └── cluster-role-binding.yaml # ClusterRoleBinding
+│   ├── configmap.yaml          # K8s ConfigMap (MONGO_URI)
+│   ├── deployment.yaml         # K8s Deployment (Flask app + ClusterAdmin)
+│   ├── service.yaml            # K8s Service
+│   ├── ingress.yaml            # K8s Ingress
+│   ├── registry-secret.yaml    # ACR auth Secret
+│   ├── service-account.yaml    # Service Account (ClusterAdmin)
+│   ├── secrets.yaml            # K8s Secrets
+│   ├── cluster-role-binding.yaml # ClusterRoleBinding
+│   └── seed-script.yaml        # Seed script ConfigMap (embedded seed_db.py)
 ├── scripts/
-│   └── backup-mongo.sh     # MongoDB backup script
+│   ├── backup-mongo.sh         # MongoDB backup script (daily cron)
+│   └── download_tfstate.py     # Download Terraform state from Azure Blob Storage
 ├── wizexercise.txt         # Root-level ID file
 ├── .github/workflows/
-│   ├── app-deploy.yml      # App build + deploy (manual)
-│   ├── terraform-apply-destroy.yml # Terraform apply/destroy with VM sizing
-│   ├── mongo-nsg-temp-access.yml # Temporary NSG IP whitelisting workflow
-│   └── backup-cron.yml     # Daily MongoDB backup (cron)
+│   ├── app-deploy.yml                # App build + deploy (manual)
+│   ├── terraform-apply-destroy.yml   # Terraform apply/destroy with VM sizing
+│   ├── mongo-nsg-temp-access.yml     # Temporary NSG IP whitelisting workflow
+│   └── backup-cron.yml               # Daily MongoDB backup (cron)
 ├── README.md               # This file
 └── terraform/
-    ├── main.tf         Main IaC config (VMs, AKS, ACR)
-    ├── variables.tf    # Variables
-    └── outputs.tf      # Outputs (IPs, credentials)
+    ├── main.tf                     # Main IaC config (VMs, AKS, ACR)
+    ├── variables.tf                # Variables (VM sizes, versions, IP ranges)
+    ├── outputs.tf                  # Outputs (IPs, credentials, kubeconfig)
+    ├── versions.tf                 # Provider version constraints
+    └── scripts/
+        ├── start-mongod.sh         # MongoDB startup script (cloud-init)
+        └── start-mongod.sh.tftpl   # Template rendered by Terraform into custom_data
 ```
 
 ## Deployment Steps
@@ -304,6 +310,12 @@ Terraform state files are stored in **Azure Blob Storage** (not GitHub Releases)
 
 The download step uses Azure CLI with service principal authentication (`--auth-mode login`) to access the private TF state container. The storage account name is discovered dynamically via `az storage account list` using the resource group filter.
 
+The state download is handled by `scripts/download_tfstate.py`, which:
+1. Accepts storage account name, container name, and resource group as arguments
+2. Fetches the storage account key via `az storage account keys list`
+3. Downloads `terraform.tfstate` from the private `tfstate` container
+4. Uses `--auth-mode key` for blob access with the retrieved key
+
 ### Node.js Version Compatibility
 
 All workflows use actions compatible with **Node.js 24** (GitHub's latest):
@@ -472,14 +484,18 @@ resource "azurerm_public_ip" "mongo_pip" {
 ```
 
 MongoDB is installed post-boot via cloud-init (see `main.tf`):
-- Downloads MongoDB 3.2.22 Linux x86_64 tarball
+- Downloads MongoDB 3.2.22 Linux x86_64 Ubuntu 16.04 binary from `https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu1604-3.2.22.tgz`
 - Extracts and copies binaries to `/usr/local/bin/`
 - Binds to `0.0.0.0:27017` (all interfaces, port 27017 restricted to AKS subnet via NSG)
+- **Authentication enabled**: MongoDB starts without `--auth`, creates admin user via localhost exception, then restarts with `--auth` flag
+- **Admin credentials**: `admin` / value of `var.mongo_admin_password` (default: `admin123`)
 - Starts via cloud-init (`custom_data`) — robust startup independent of Terraform session
-- Runs as systemd service with `nohup mongod ... --fork` (survives VM reboot and session disconnect)
+- Runs as daemon with `nohup mongod ... --fork` (survives VM reboot and session disconnect)
 - Includes startup validation: retries TCP check on 27017 for 60s, exits with error on failure
 - Logs to `/var/log/mongodb/mongod.log` and `/home/azureuser/logs/mongod.out`
-- Provisioning script: `terraform/scripts/start-mongod.sh`
+- Provisioning script: `terraform/scripts/start-mongod.sh` (template: `start-mongod.sh.tftpl`)
+
+The `start-mongod.sh` script is written as a `.tftpl` template file and rendered by Terraform's `templatefile()` function into the VM's `custom_data` field. This passes the script to cloud-init for execution on first boot. The `.tftpl` file receives `mongo_admin_password` from the `var.mongo_admin_password` Terraform variable, injected into the `mongo admin --eval` command that creates the MongoDB admin user.
 
 ### Temporary IP Access to MongoDB
 
@@ -497,45 +513,81 @@ The workflow creates an NSG rule `Mongo-Allow-IP` (priority 1051) on the `mongo-
 
 ### Database Seeding (Idempotent)
 
-The `init-mongo` init container in the Flask deployment runs `seed_db.py` on every pod restart. The script is **idempotent** — it checks if the admin user exists before inserting:
+The `init-mongo` init container in the Flask deployment runs `seed_db.py` on every pod restart. The script is **idempotent** — it checks if the admin user exists before inserting. The `seed_db.py` script now reads `MONGO_ADMIN_PASSWORD` from the ConfigMap and constructs an authenticated connection string using `authSource=admin`.
 
 ```python
-admin_user = users.find_one({'username': 'admin'})
-if not admin_user:
-    users.insert_one({...})
+MONGO_URI = os.environ.get('MONGO_URI', f'mongodb://admin:{MONGO_ADMIN_PASSWORD}@{MONGO_IP}:27017/admin-app?authSource=admin')
+client = MongoClient(MONGO_URI)
 ```
 
 This means:
-- **Fresh DB**: admin user is created with `admin/admin123`
+- **Fresh DB**: MongoDB admin user created by `start-mongod.sh` (cloud-init), app admin user created by `seed_db.py`
 - **Existing DB**: script logs "Admin user already exists" and exits without modifying data
 - **Container restart**: no data loss, admin user preserved
+- **Authentication required**: both MongoDB admin and app admin users must exist for connections
 
 ### Backup Script
 
-The daily backup script (`scripts/backup-mongo.sh`) performs:
+The daily backup script (`scripts/backup-mongo.sh`) now includes **authentication** and **temporary NSG access** for the GitHub Actions Runner:
 
-1. Connects to MongoDB via `mongodump` over private IP (or public IP for external scripts)
-2. Creates a compressed archive with timestamp
-3. Uploads to Azure Blob Storage (publicly accessible)
-4. Verifies upload completion
+1. **NSG temp access**: Since the Runner is outside the Azure VNet and MongoDB NSG only allows AKS subnet on port 27017, the script dynamically adds the Runner's public IP to a temporary NSG rule via `az network nsg rule create`
+2. **Authenticated mongodump**: Uses `--username admin --password $MONGO_ADMIN_PASSWORD --authenticationDatabase admin`
+3. Creates a timestamped backup directory and compresses it with `tar -czf`
+4. Uploads the `.tar.gz` archive to Azure Blob Storage (publicly accessible container)
+5. Cleans up local temporary files
+6. **NSG cleanup**: Uses `trap EXIT` to ensure the temporary NSG rule is always removed, even if the backup fails
 
 ```bash
 #!/bin/bash
-MONGODUMP_PATH="/usr/bin/mongodump"
+set -e
+
+MONGO_IP=${MONGO_IP:-"localhost"}
+STORAGE_ACCOUNT=${STORAGE_ACCOUNT:-""}
+STORAGE_KEY=${STORAGE_KEY:-""}
+CONTAINER_NAME=${CONTAINER_NAME:-"mongo-backups"}
+MONGO_ADMIN_PASSWORD=${MONGO_ADMIN_PASSWORD:-""}
+RESOURCE_GROUP=${RESOURCE_GROUP:-"wiz-exercise-rg"}
+NSG_NAME=${NSG_NAME:-"mongo-nsg"}
+RUNNER_IP=$(curl -s https://api.ipify.org)
+
+# Add temporary NSG rule for Runner IP → MongoDB (27017)
+NSG_RULE_NAME="mongo_runner_$(echo $RUNNER_IP | tr '.' '_')"
+az network nsg rule create \
+  --resource-group "$RESOURCE_GROUP" --nsg-name "$NSG_NAME" \
+  --name "$NSG_RULE_NAME" --priority 1055 --direction Inbound --access Allow \
+  --protocol Tcp --source-address-prefix "$RUNNER_IP/32" \
+  --destination-port-ranges 27017
+
+# Cleanup function - always remove NSG rule
+cleanup_nsg() {
+  az network nsg rule delete \
+    --resource-group "$RESOURCE_GROUP" --nsg-name "$NSG_NAME" \
+    --name "$NSG_RULE_NAME" 2>/dev/null || true
+}
+trap cleanup_nsg EXIT
+
+# Dump MongoDB data with authentication
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_NAME="mongo_${TIMESTAMP}.tar.gz"
+BACKUP_DIR="/tmp/mongo_backup_${TIMESTAMP}"
+mkdir -p $BACKUP_DIR
 
-# Dump and compress MongoDB data
-$MONGODUMP_PATH --host $MONGO_IP --port 27017 --gzip --archive=$BACKUP_NAME
+mongodump --host $MONGO_IP --port 27017 \
+  --username admin --password "$MONGO_ADMIN_PASSWORD" \
+  --authenticationDatabase admin \
+  -o $BACKUP_DIR
 
-# Upload to Azure Blob Storage (public container)
+# Compress and upload
+BACKUP_FILE="${BACKUP_DIR}.tar.gz"
+tar -czf $BACKUP_FILE -C /tmp $(basename $BACKUP_DIR)
+
 az storage blob upload \
-  --account-name $STORAGE_ACCOUNT \
-  --account-key $STORAGE_KEY \
-  --container-name $CONTAINER_NAME \
-  --name $BACKUP_NAME \
-  --file $BACKUP_NAME \
-  --auth-mode key
+  --account-name $STORAGE_ACCOUNT --account-key $STORAGE_KEY \
+  --container-name $CONTAINER_NAME --name "mongo_${TIMESTAMP}.tar.gz" \
+  --file $BACKUP_FILE --auth-mode key
+
+# Cleanup
+rm -rf $BACKUP_DIR $BACKUP_FILE
+```
 ```
 
 ### AKS Cluster Configuration
@@ -579,7 +631,8 @@ resource "azurerm_kubernetes_cluster" "aks" {
 | Output | Description |
 |--------|-------------|
 | `mongo_vm_public_ip` | Public IP of MongoDB VM |
-| `mongo_connection_string` | MongoDB connection string (`mongodb://<IP>:27017/admin-app`) |
+| `mongo_connection_string` | MongoDB connection string (`mongodb://admin:<password>@<IP>:27017/admin-app?authSource=admin`) |
+| `mongo_admin_password` | Password for MongoDB admin user (sensitive) |
 | `mongo_vm_private_ip` | Private IP of MongoDB VM |
 | `mongo_vm_identity_principal_id` | Managed Identity principal ID for Mongo VM |
 | `aks_ingress_endpoint` | Ingress URL (`https://<fqdn>`) for the Flask app |
@@ -640,7 +693,7 @@ VNet: 10.0.0.0/16
 | Resource | Name | Role |
 |----------|------|------|
 | ServiceAccount | `wiz-exercise-sa` | App running identity |
-| ClusterRoleBinding | `wiz-exercise-sa-cluster-admin` | ClusterAdmin for service account |
+| ClusterRoleBinding | `wiz-exercise-cluster-admin` | ClusterAdmin for service account |
 
 The Flask app pods run with ClusterAdmin privileges through the service account, which is an intentionally over-permissive configuration.
 

@@ -15,6 +15,7 @@ on:
 env:
   RESOURCE_GROUP: wiz-exercise-rg
   TFSTATE_CONTAINER: tfstate
+  NSG_NAME: mongo-nsg
 
 jobs:
   backup:
@@ -35,7 +36,6 @@ jobs:
       continue-on-error: true
       run: |
         echo "Attempting to download Terraform state from Azure Blob Storage..."
-        # Find storage account name from resource group
         TFSTATE_STORAGE_ACCOUNT=$(az storage account list \
           --resource-group "$RESOURCE_GROUP" \
           --query "[?contains(name, 'wizbackup')].name | [0]" -o tsv 2>/dev/null)
@@ -60,9 +60,11 @@ jobs:
       run: |
         cd terraform
         echo "MONGO_IP=$(terraform output -raw mongo_vm_public_ip)" >> $GITHUB_ENV
+        echo "MONGO_ADMIN_PASSWORD=$(terraform output -raw mongo_admin_password)" >> $GITHUB_ENV
         echo "STORAGE_ACCOUNT=$(terraform output -raw storage_account_name)" >> $GITHUB_ENV
         echo "STORAGE_KEY=$(terraform output -raw storage_blob_access_key)" >> $GITHUB_ENV
         echo "CONTAINER_NAME=$(terraform output -raw storage_container_name)" >> $GITHUB_ENV
+        echo "RUNNER_IP=$(curl -s https://api.ipify.org)" >> $GITHUB_ENV
 
     - name: Install mongodump and Azure CLI
       run: |
@@ -71,10 +73,19 @@ jobs:
 
     - name: Run MongoDB Backup
       run: |
+        # Backup script handles NSG temp access internally:
+        # 1. Adds Runner IP to MongoDB NSG (port 27017)
+        # 2. Runs mongodump with auth credentials
+        # 3. Uploads to Azure Blob Storage
+        # 4. Removes NSG rule (via trap EXIT)
         MONGO_IP=${{ env.MONGO_IP }} \
+        MONGO_ADMIN_PASSWORD=${{ env.MONGO_ADMIN_PASSWORD }} \
         STORAGE_ACCOUNT=${{ env.STORAGE_ACCOUNT }} \
         STORAGE_KEY=${{ env.STORAGE_KEY }} \
         CONTAINER_NAME=${{ env.CONTAINER_NAME }} \
+        RESOURCE_GROUP=${RESOURCE_GROUP} \
+        NSG_NAME=${NSG_NAME} \
+        RUNNER_IP=${{ env.RUNNER_IP }} \
         bash scripts/backup-mongo.sh
 
     - name: Verify Backup Upload

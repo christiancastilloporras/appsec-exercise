@@ -1,7 +1,19 @@
+# ============================================================
+# MongoDB Outputs
+# ============================================================
+
 output "mongo_connection_string" {
   # Public IP for external access (MongoDB Compass, mongosh, etc.)
   # Requires NSG rule allowing your IP on port 27017
-  value = "mongodb://${azurerm_public_ip.mongo_pip.ip_address}:27017/admin-app"
+  # Includes authentication credentials
+  value     = "mongodb://admin:${var.mongo_admin_password}@${azurerm_public_ip.mongo_pip.ip_address}:27017/admin-app?authSource=admin"
+  sensitive = true
+}
+
+output "mongo_admin_password" {
+  description = "Password for MongoDB admin user"
+  value       = var.mongo_admin_password
+  sensitive   = true
 }
 
 output "mongo_vm_public_ip" {

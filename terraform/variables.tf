@@ -20,6 +20,11 @@ variable "vm_admin_password" {
   default = "P@ssw0rd1234!"
 }
 
+variable "mongo_admin_password" {
+  description = "Admin password for MongoDB admin user (authSource: admin)"
+  default     = "admin123"
+}
+
 variable "mongo_version" {
   default = "3.2.22"
 }

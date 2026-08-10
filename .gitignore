@@ -1,6 +1,9 @@
 # Graphify
 graphify-out/
 
+# Analysis and interview docs
+docs/
+
 # Terraform
 .terraform/
 *.tfstate

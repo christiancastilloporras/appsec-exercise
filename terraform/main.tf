@@ -160,7 +160,7 @@ resource "azurerm_linux_virtual_machine" "mongo_vm" {
   }
 
   custom_data = base64encode(templatefile("${path.module}/scripts/start-mongod.sh.tftpl", {
-    # Variables can be passed here if needed
+    mongo_admin_password = var.mongo_admin_password
   }))
 }
 

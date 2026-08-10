@@ -5,17 +5,27 @@ metadata:
 data:
   seed_db.py: |
     #!/usr/bin/env python3
-    """Seed script to create admin user in MongoDB"""
+    """Seed script to create admin user in MongoDB
+
+    This script connects with authentication and creates the application's admin
+    user (separate from the MongoDB admin user). The MongoDB admin user is created
+    by the cloud-init startup script (start-mongod.sh) during VM provisioning.
+    """
     from pymongo import MongoClient
     from werkzeug.security import generate_password_hash
     import os
-    
-    MONGO_URI = os.environ.get('MONGO_URI', 'mongodb://localhost:27017/admin-app')
+
+    # Read connection details from environment variables
+    MONGO_IP = os.environ.get('MONGO_IP', 'localhost')
+    MONGO_ADMIN_PASSWORD = os.environ.get('MONGO_ADMIN_PASSWORD', 'admin123')
+    MONGO_URI = os.environ.get('MONGO_URI', f'mongodb://admin:{MONGO_ADMIN_PASSWORD}@{MONGO_IP}:27017/admin-app?authSource=admin')
+
+    # Connect with authentication
     client = MongoClient(MONGO_URI)
     db = client['admin-app']
     users = db['users']
-    
-    # Create admin user if not exists
+
+    # Authenticate and create app admin user if not exists
     admin_user = users.find_one({'username': 'admin'})
     if not admin_user:
         users.insert_one({
@@ -25,6 +35,6 @@ data:
         print("Admin user created: admin / admin123")
     else:
         print("Admin user already exists")
-    
-    # Make MongoDB accessible without auth (vulnerable default)
-    print("MongoDB setup complete - no authentication required (intentionally vulnerable)")
+
+    # MongoDB authentication is now enabled (authSource=admin)
+    print("MongoDB setup complete - authentication required for all connections")

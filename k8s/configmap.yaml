@@ -4,5 +4,5 @@ metadata:
   name: wiz-app-config
 data:
   MONGO_IP: "MONGO_IP_PLACEHOLDER"
-  MONGO_URI: "mongodb://MONGO_IP_PLACEHOLDER:27017/admin-app"
+  MONGO_URI: "mongodb://admin:MONGO_PASS_PLACEHOLDER@MONGO_IP_PLACEHOLDER:27017/admin-app?authSource=admin"
   SECRET_KEY: "wiz-secret-key"

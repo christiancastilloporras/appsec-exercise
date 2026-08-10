@@ -28,6 +28,11 @@ env:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    # Explicitly grant permissions at job level for SARIF upload
+    permissions:
+      security-events: write
+      contents: read
+      packages: write
     steps:
     - name: Checkout
       uses: actions/checkout@v5

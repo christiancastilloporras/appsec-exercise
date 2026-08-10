@@ -42,6 +42,11 @@ env:
 jobs:
   terraform:
     runs-on: ubuntu-latest
+    # Explicitly grant permissions at job level for SARIF upload
+    permissions:
+      security-events: write
+      contents: read
+      pull-requests: read
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v5
@@ -114,8 +119,9 @@ jobs:
       continue-on-error: true
       uses: github/codeql-action/upload-sarif@v4
       with:
-        sarif_file: checkov-results.sarif
+        sarif_file: checkov-results.sarif/results_sarif.sarif
         category: "checkov-terraform"
+        checkout_path: ${{ github.workspace }}
 
     - name: Terraform Apply
       if: github.event.inputs.action == 'apply'

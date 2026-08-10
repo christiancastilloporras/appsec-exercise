@@ -3,14 +3,10 @@ kind: Ingress
 metadata:
   name: wiz-exercise-ingress
   annotations:
-    # Redirect HTTP to HTTPS (handled by Cloudflare + Ingress controller)
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # HTTP→HTTPS redirect handled by Cloudflare; NGINX SSL redirect not needed
+    # because Cloudflare terminates SSL at the edge and connects via HTTP
 spec:
   ingressClassName: webapprouting.kubernetesazure.com
-  tls:
-  - hosts:
-    - app.cloudguardian.xyz
-    secretName: tls-origin-cert
   rules:
   - host: app.cloudguardian.xyz
     http:

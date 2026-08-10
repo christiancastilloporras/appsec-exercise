@@ -216,6 +216,26 @@ jobs:
         kubectl apply -f k8s/cluster-role-binding.yaml
         kubectl apply -f k8s/secrets.yaml
 
+    - name: Patch Ingress with TLS (if secret exists)
+      if: always()
+      run: |
+        if kubectl get secret tls-origin-cert -n default > /dev/null 2>&1; then
+          echo "Patching ingress with TLS configuration..."
+          kubectl patch ingress wiz-exercise-ingress --type='merge' -p='{
+            "spec": {
+              "tls": [
+                {
+                  "hosts": ["app.cloudguardian.xyz"],
+                  "secretName": "tls-origin-cert"
+                }
+              ]
+            }
+          }'
+          echo "Ingress TLS configuration applied"
+        else
+          echo "TLS Secret not found - ingress will serve HTTP only"
+        fi
+
     - name: Wait for LoadBalancer IP and Create Cloudflare DNS Record
       if: always()
       env:

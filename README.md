@@ -7,15 +7,46 @@ Flask web application deployed on Azure Kubernetes Service (AKS), backed by a vu
 ## Architecture
 
 ```
-Internet
-   |
-[AKS Ingress] --> [Flask App (Docker)] --> [MongoDB 3.2.22 VM]
-   |                                    (vulnerable - binds 0.0.0.0:27017)
-[Azure Load Balancer]
-   |
-[Azure Container Registry]
-   |
-[Docker Image: wiz-exercise]
+┌─────────────────────────────────────────────────────────────────────────┐
+│                            INTERNET                                    │
+└────────┬───────────────────────────────────────────────────────────────┘
+         │  DNS: app.cloudguardian.xyz (proxied through Cloudflare)
+         ▼
+┌──────────────────┐     Cloudflare (CDN + DNS + TLS Termination)
+│  Cloudflare       │
+│  (Proxy Mode:     │
+│   Full/Strict)    │
+└────────┬──────────┘
+         │ HTTPS (Cloudflare Origin CA)
+         ▼
+┌──────────────────┐     Azure Load Balancer
+│  Azure LB         │     Public IP
+└────────┬──────────┘
+         │  443 (TLS)
+         ▼
+┌──────────────────┐     AKS Application Routing Ingress
+│  Ingress          │     (webapprouting.kubernetes.azure.com)
+│  (nginx)          │
+└────────┬──────────┘
+         │  HTTP/HTTPS
+         ▼
+┌──────────────────┐     Flask App Container
+│  AKS Pod          │     ├── app.py (routes)
+│                    │     ├── MongoDB connection via MONGO_URI
+└────────┬──────────┘
+         │  TCP 27017
+         ▼
+┌──────────────────────────────────────────┐
+│  MongoDB VM (Ubuntu 18.04 LTS)              │
+│  Port: 27017 (authSource=admin)          │
+│  Vulnerability: binds 0.0.0.0:27017      │
+│           ↓                                 │
+│  Azure Blob Storage (public access)       │
+│  backups via backup-mongo.sh              │
+│  (uses MongoDB 3.2.22 ubuntu1604 binary)  │
+└──────────────────────────────────────────┘
+
+AKS → pulls images → Azure Container Registry (ACR)
 ```
 
 ### Component Map (from graphify analysis)
@@ -294,10 +325,13 @@ Daily backups are stored in Azure Blob Storage:
 
 | Scanner | What | Output | Where |
 ||---------|------|--------|-------|
-| **Checkov** (in `terraform-apply-destroy.yml`) | Terraform IaC scan | SARIF → Code Scanning alerts | GitHub Security tab → Code Scanning |
-|| **Trivy** (in `app-deploy.yml`) | Container image vulnerabilities | SARIF → Code Scanning alerts | GitHub Security tab → Code Scanning |
+|| **Checkov** (in `terraform-apply-destroy.yml`) | Terraform IaC scan | SARIF artifact | GitHub Actions Artifacts (`checkov-results`) |
+|| **Trivy** (in `app-deploy.yml`) | Container image vulnerabilities | SARIF + TXT artifact | GitHub Actions Artifacts (`trivy-scan-results`) |
 
-Both scanners use pinned action versions to avoid Node.js 16 deprecation warnings. SARIF results are uploaded via `github/codeql-action/upload-sarif@v3`.
+Both scanners use pinned action versions to avoid Node.js 16 deprecation warnings. Results are saved as workflow artifacts for manual review in SARIF viewers. To view SARIF results:
+1. Go to the workflow run → Artifacts section
+2. Download the relevant artifact
+3. Use a SARIF viewer such as [https://microsoft.github.io/](https://microsoft.github.io/) to analyze the SARIF file
 
 ### Workflow Inputs (terraform-apply-destroy.yml)
 

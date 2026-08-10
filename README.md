@@ -284,11 +284,20 @@ Daily backups are stored in Azure Blob Storage:
 ### GitHub Actions Workflows
 
 | Workflow | Trigger | Action | Purpose |
-|----------|---------|--------|---------|
-| `app-deploy.yml` | Manual (`workflow_dispatch`) | — | Build, push, deploy with git SHA tags; auto-authorizes runner IP + Cloudflare DNS |
-| `terraform-apply-destroy.yml` | Manual (`workflow_dispatch`) | apply/destroy | Terraform apply/destroy with VM sizing + AKS authorized IPs |
-| `mongo-nsg-temp-access.yml` | Manual (`workflow_dispatch`) | add/remove | Temporary NSG + AKS API IP whitelisting |
-| `backup-cron.yml` | Scheduled (daily 2AM UTC) + Manual | — | MongoDB backup to Azure Blob (public access) |
+||----------|---------|--------|---------|
+|| `app-deploy.yml` | Manual (`workflow_dispatch`) | — | Build, push, deploy with git SHA tags; auto-authorizes runner IP + Cloudflare DNS |
+|| `terraform-apply-destroy.yml` | Manual (`workflow_dispatch`) | apply/destroy | Terraform apply/destroy with VM sizing + AKS authorized IPs |
+|| `backup-cron.yml` | Scheduled (daily 2AM UTC) + Manual | — | MongoDB backup to Azure Blob (public access) |
+|| `mongo-nsg-temp-access.yml` | Manual (`workflow_dispatch`) | add/remove | Temporary NSG + AKS API IP whitelisting |
+
+### Security Scanning
+
+| Scanner | What | Output | Where |
+||---------|------|--------|-------|
+| **Checkov** (in `terraform-apply-destroy.yml`) | Terraform IaC scan | SARIF → Code Scanning alerts | GitHub Security tab → Code Scanning |
+|| **Trivy** (in `app-deploy.yml`) | Container image vulnerabilities | SARIF → Code Scanning alerts | GitHub Security tab → Code Scanning |
+
+Both scanners use pinned action versions to avoid Node.js 16 deprecation warnings. SARIF results are uploaded via `github/codeql-action/upload-sarif@v3`.
 
 ### Workflow Inputs (terraform-apply-destroy.yml)
 

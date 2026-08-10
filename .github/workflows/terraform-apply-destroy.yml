@@ -28,6 +28,12 @@ on:
         required: false
         default: ''
 
+# Permissions required for Code Scanning SARIF upload
+permissions:
+  security-events: write
+  contents: read
+  pull-requests: read
+
 env:
   RESOURCE_GROUP: wiz-exercise-rg
   TF_VERSION: 1.7.5
@@ -89,6 +95,27 @@ jobs:
       run: |
         cd terraform
         terraform init -input=false
+
+    - name: Run Checkov Terraform Scan
+      continue-on-error: true
+      uses: bridgecrewio/checkov-action@v12
+      with:
+        directory: terraform
+        framework: terraform
+        output_file_path: checkov-results.sarif
+        output_format: sarif
+        quiet: true
+        # soft_fail: true - Report findings but don't fail the workflow
+        # (continue-on-error provides a safety net if the action itself has issues)
+        soft_fail: true
+
+    - name: Upload Checkov SARIF to Code Scanning
+      if: always()
+      continue-on-error: true
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: checkov-results.sarif
+        category: "checkov-terraform"
 
     - name: Terraform Apply
       if: github.event.inputs.action == 'apply'

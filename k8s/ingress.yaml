@@ -6,7 +6,7 @@ metadata:
     # HTTP→HTTPS redirect handled by Cloudflare; NGINX SSL redirect not needed
     # because Cloudflare terminates SSL at the edge and connects via HTTP
 spec:
-  ingressClassName: webapprouting.kubernetesazure.com
+  ingressClassName: webapprouting.kubernetes.azure.com
   rules:
   - host: app.cloudguardian.xyz
     http:

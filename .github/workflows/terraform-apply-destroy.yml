@@ -28,11 +28,9 @@ on:
         required: false
         default: ''
 
-# Permissions required for Code Scanning SARIF upload
+# Permissions required for artifact uploads
 permissions:
-  security-events: write
   contents: read
-  pull-requests: read
 
 env:
   RESOURCE_GROUP: wiz-exercise-rg
@@ -42,11 +40,6 @@ env:
 jobs:
   terraform:
     runs-on: ubuntu-latest
-    # Explicitly grant permissions at job level for SARIF upload
-    permissions:
-      security-events: write
-      contents: read
-      pull-requests: read
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v5
@@ -114,14 +107,13 @@ jobs:
         # (continue-on-error provides a safety net if the action itself has issues)
         soft_fail: true
 
-    - name: Upload Checkov SARIF to Code Scanning
+    - name: Upload Checkov Scan Results as Artifact
       if: always()
-      continue-on-error: true
-      uses: github/codeql-action/upload-sarif@v4
+      uses: actions/upload-artifact@v5
       with:
-        sarif_file: checkov-results.sarif/results_sarif.sarif
-        category: "checkov-terraform"
-        checkout_path: ${{ github.workspace }}
+        name: checkov-results
+        path: checkov-results.sarif
+        retention-days: 30
 
     - name: Terraform Apply
       if: github.event.inputs.action == 'apply'

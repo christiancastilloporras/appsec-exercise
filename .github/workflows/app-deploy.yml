@@ -183,6 +183,29 @@ jobs:
           --from-literal=MONGO_ADMIN_PASSWORD="${{ env.MONGO_ADMIN_PASSWORD }}" \
           --dry-run=client -o yaml | kubectl apply -f -
 
+    - name: Create TLS Secret from Cloudflare Origin CA (if available)
+      env:
+        CF_ORIGIN_CA_CERT: ${{ secrets.CF_ORIGIN_CA_CERT }}
+        CF_ORIGIN_CA_KEY: ${{ secrets.CF_ORIGIN_CA_KEY }}
+      run: |
+        if [ -n "$CF_ORIGIN_CA_CERT" ] && [ -n "$CF_ORIGIN_CA_KEY" ]; then
+          echo "Creating TLS Secret from Cloudflare Origin CA certificate..."
+          if echo "$CF_ORIGIN_CA_CERT" | grep -q 'BEGIN CERTIFICATE'; then
+            printf '%s\n' "$CF_ORIGIN_CA_CERT" > /tmp/origin-cert.pem
+            printf '%s\n' "$CF_ORIGIN_CA_KEY" > /tmp/origin-key.pem
+          else
+            echo "$CF_ORIGIN_CA_CERT" | base64 -d > /tmp/origin-cert.pem
+            echo "$CF_ORIGIN_CA_KEY" | base64 -d > /tmp/origin-key.pem
+          fi
+          kubectl create secret tls tls-origin-cert \
+            --cert=/tmp/origin-cert.pem \
+            --key=/tmp/origin-key.pem \
+            --dry-run=client -o yaml | kubectl apply -f -
+          echo "TLS Secret 'tls-origin-cert' created"
+        else
+          echo "Cloudflare Origin CA secrets not found - deploying without TLS"
+        fi
+
     - name: Deploy K8s Manifests
       run: |
         sed "s|PLACEHOLDER_ACR|${{ env.ACR_NAME }}|g; s|PLACEHOLDER_TAG|${{ env.IMAGE_TAG }}|g; s|MONGO_IP_PLACEHOLDER|${{ env.MONGO_IP }}|g" k8s/deployment.yaml | kubectl apply -f -
@@ -198,8 +221,6 @@ jobs:
       env:
         CF_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
         CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        CF_ORIGIN_CA_CERT: ${{ secrets.CF_ORIGIN_CA_CERT }}
-        CF_ORIGIN_CA_KEY: ${{ secrets.CF_ORIGIN_CA_KEY }}
       run: |
         # Debug: Show all services and ingresses
         echo "=== Debug: All Services ==="
@@ -271,64 +292,6 @@ jobs:
           --data "{\"type\":\"A\",\"name\":\"app\",\"content\":\"${LB_IP}\",\"ttl\":1,\"proxied\":true}"
         echo ""
         echo "DNS record 'app.cloudguardian.xyz' created pointing to $LB_IP"
-
-        # Create Kubernetes TLS Secret from pre-generated Origin CA certificate
-        # The cert and key should be provided as GitHub Secrets (CF_ORIGIN_CA_CERT, CF_ORIGIN_CA_KEY)
-        # These can be generated manually via Cloudflare Dashboard -> SSL/TLS -> Origin Certificates -> Create Certificate
-        # Use hostname: *.cloudguardian.xyz or app.cloudguardian.xyz, Type: RSA
-        #
-        # Steps:
-        # 1. Go to https://dash.cloudflare.com -> SSL/TLS -> Origin Certificates -> Create Certificate
-        # 2. Let Cloudflare generate private key pair
-        # 3. Hostname: *.cloudguardian.xyz (wildcard recommended)
-        # 4. Certificate type: RSA
-        # 5. Download both certificate and private key
-        # 6. Add to GitHub repo secrets as CF_ORIGIN_CA_CERT and CF_ORIGIN_CA_KEY
-
-        if [ -n "$CF_ORIGIN_CA_CERT" ] && [ -n "$CF_ORIGIN_CA_KEY" ]; then
-          echo "Using pre-generated Origin CA certificate from GitHub secrets"
-
-          # Try base64 decoding first (recommended for multi-line PEM secrets in GitHub Actions)
-          # If your secrets are stored as raw PEM, remove the base64 -d line
-          if echo "$CF_ORIGIN_CA_CERT" | grep -q 'BEGIN CERTIFICATE'; then
-            # Raw PEM format - no base64 encoding
-            printf '%s\n' "$CF_ORIGIN_CA_CERT" > /tmp/origin-cert.pem
-            printf '%s\n' "$CF_ORIGIN_CA_KEY" > /tmp/origin-key.pem
-          else
-            # Assume base64-encoded (recommended for GitHub secrets)
-            echo "$CF_ORIGIN_CA_CERT" | base64 -d > /tmp/origin-cert.pem
-            echo "$CF_ORIGIN_CA_KEY" | base64 -d > /tmp/origin-key.pem
-          fi
-
-          # Validate certificate
-          echo "Cert file size: $(wc -c < /tmp/origin-cert.pem) bytes"
-          echo "Key file size: $(wc -c < /tmp/origin-key.pem) bytes"
-          openssl x509 -in /tmp/origin-cert.pem -text -noout | head -5
-          openssl rsa -in /tmp/origin-key.pem -check -noout 2>/dev/null || echo "Key format validation skipped"
-
-          # Create Kubernetes TLS Secret
-          kubectl create secret tls tls-origin-cert \
-            --cert=/tmp/origin-cert.pem \
-            --key=/tmp/origin-key.pem \
-            --dry-run=client -o yaml | kubectl apply -f -
-          echo "TLS secret 'tls-origin-cert' created from pre-generated certificate"
-
-          # Update Ingress to use TLS with the Origin CA certificate
-          kubectl patch ingress wiz-exercise-ingress --type='merge' -p='{
-            "spec": {
-              "tls": [
-                {
-                  "hosts": ["app.cloudguardian.xyz"],
-                  "secretName": "tls-origin-cert"
-                }
-              ]
-            }
-          }'
-          echo "Ingress TLS configuration applied"
-        else
-          echo "CF_ORIGIN_CA_CERT secret not found - skipping TLS configuration"
-          echo "To enable HTTPS: create Origin CA cert via Cloudflare dashboard and add CF_ORIGIN_CA_CERT + CF_ORIGIN_CA_KEY secrets"
-        fi
 
     - name: Verify Deployment
       run: |

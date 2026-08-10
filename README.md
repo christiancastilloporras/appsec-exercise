@@ -225,8 +225,10 @@ This approach is simpler and more reliable than API-based certificate generation
    - Go to **Cloudflare Dashboard → SSL/TLS → Overview**
    - Set **SSL/TLS encryption** to **"Full"** mode
 
-4. **Workflow handles the rest**:
-   - The `app-deploy.yml` workflow reads the secrets, validates them, creates the TLS secret, and patches the ingress TLS configuration automatically
+4. **Workflow handles TLS automatically**:
+   - The `app-deploy.yml` workflow creates the `tls-origin-cert` Kubernetes Secret **before** deploying the ingress
+   - The ingress manifest (`k8s/ingress.yaml`) includes a `tls:` section that references this Secret
+   - If Cloudflare Origin CA secrets are not configured, the ingress is deployed without TLS (HTTP only)
 
 #### Fallback (No TLS)
 If `CF_ORIGIN_CA_CERT` is not set, the workflow deploys the app with HTTP-only access (no HTTPS).

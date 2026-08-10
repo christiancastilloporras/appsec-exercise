@@ -2,8 +2,15 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: wiz-exercise-ingress
+  annotations:
+    # Redirect HTTP to HTTPS (handled by Cloudflare + Ingress controller)
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
-  ingressClassName: webapprouting.kubernetes.azure.com
+  ingressClassName: webapprouting.kubernetesazure.com
+  tls:
+  - hosts:
+    - app.cloudguardian.xyz
+    secretName: tls-origin-cert
   rules:
   - host: app.cloudguardian.xyz
     http:

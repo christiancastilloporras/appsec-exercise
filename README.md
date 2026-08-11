@@ -415,33 +415,6 @@ This project contains **intentionally vulnerable components** for educational/se
 | `aks_authorized_ip_ranges` | `[]` | List of CIDRs for AKS API server access (empty = block all) |
 | `cloudflare_ip_ranges` | Cloudflare IPs | IP ranges for NSG rules (Cloudflare proxy traffic) |
 
-### AKS Cluster Configuration
-
-### Architecture (Simplified - Single Load Balancer)
-
-```
-Internet
-   ↓
-[AKS Application Routing (nginx controller)]
-   ↓ (ClusterIP Service)
-[Flask App Pod (port 5000)]
-   ↓
-[MongoDB 3.2.22 VM (private IP)]
-```
-
-**Components:**
-| Component | Type | Managed By |
-|---|---|---|
-| `external-nginx` | LoadBalancer (external IP) | AKS Web App Routing addon (auto-created) |
-| `wiz-exercise-ingress` | Ingress (`webapprouting` class) | Your workflow |
-| `wiz-exercise-service` | ClusterIP (internal only) | Your workflow |
-| `wiz-exercise-app` | Deployment/Pod | Your workflow |
-
-**Key change:** Service changed from `LoadBalancer` → `ClusterIP`. The single external LoadBalancer is provided by AKS Application Routing addon, which routes to your ingress, which routes to your ClusterIP service.
-
-**Before:** 2 LoadBalancers (service LB + addon nginx LB)
-**Now:** 1 LoadBalancer (addon nginx LB only)
-
 ### Storage Account Configuration
 
 The Azure Storage Account is intentionally misconfigured with public access enabled:

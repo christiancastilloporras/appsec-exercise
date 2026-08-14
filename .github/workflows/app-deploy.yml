@@ -134,7 +134,7 @@ jobs:
 
     - name: Run Trivy Vulnerability Scanner (non-blocking)
       continue-on-error: true
-      uses: aquasecurity/trivy-action@0.28.0
+      uses: aquasecurity/trivy-action@v0.28.0
       with:
         image-ref: '${{ env.ACR_NAME }}.azurecr.io/wiz-exercise:${{ env.IMAGE_TAG }}'
         format: 'table'
@@ -148,7 +148,7 @@ jobs:
     - name: Generate SARIF Report
       if: always()
       continue-on-error: true
-      uses: aquasecurity/trivy-action@0.28.0
+      uses: aquasecurity/trivy-action@v0.28.0
       with:
         image-ref: '${{ env.ACR_NAME }}.azurecr.io/wiz-exercise:${{ env.IMAGE_TAG }}'
         format: 'sarif'

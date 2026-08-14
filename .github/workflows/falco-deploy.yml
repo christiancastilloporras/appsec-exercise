@@ -27,6 +27,10 @@ env:
 
 jobs:
   deploy-falco:
+    # Guard: only run on manual triggers. Without this, GitHub registers
+    # push events as failed runs (0s, no jobs) whenever the workflow file
+    # is committed. This conditional skips the job on any non-manual event.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
     - name: Checkout

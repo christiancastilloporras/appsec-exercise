@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: wiz-exercise-app
+  name: appsec-exercise-app
   labels:
-    app: wiz-exercise-app
+    app: appsec-exercise-app
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: wiz-exercise-app
+      app: appsec-exercise-app
   template:
     metadata:
       labels:
-        app: wiz-exercise-app
+        app: appsec-exercise-app
     spec:
-      serviceAccount: wiz-exercise-sa
-      serviceAccountName: wiz-exercise-sa
+      serviceAccount: appsec-exercise-sa
+      serviceAccountName: appsec-exercise-sa
       initContainers:
       - name: init-mongo
         image: python:3.11-slim
@@ -37,7 +37,7 @@ spec:
         - name: MONGO_URI
           valueFrom:
             configMapKeyRef:
-              name: wiz-app-config
+              name: appsec-app-config
               key: MONGO_URI
         volumeMounts:
         - name: seed-script
@@ -47,19 +47,19 @@ spec:
         configMap:
           name: seed-script
       containers:
-      - name: wiz-app
+      - name: appsec-app
         # Image updated by CI pipeline via sed
-        image: PLACEHOLDER_ACR.azurecr.io/wiz-exercise:PLACEHOLDER_TAG
+        image: PLACEHOLDER_ACR.azurecr.io/appsec-exercise:PLACEHOLDER_TAG
         ports:
         - containerPort: 5000
         envFrom:
         - configMapRef:
-            name: wiz-app-config
+            name: appsec-app-config
         env:
         - name: SECRET_KEY
           valueFrom:
             secretKeyRef:
-              name: wiz-app-secrets
+              name: appsec-app-secrets
               key: secret_key
         imagePullPolicy: Always
       imagePullSecrets:

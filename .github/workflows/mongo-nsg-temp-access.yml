@@ -17,11 +17,11 @@ on:
           - remove
 
 env:
-  RESOURCE_GROUP: wiz-exercise-rg
+  RESOURCE_GROUP: appsec-exercise-rg
   NSG_NAME: mongo-nsg
   NSG_RULE_NAME: Mongo-Allow-IP
   NSG_RULE_PRIORITY: 1051
-  AKS_CLUSTER_NAME: wiz-aks-cluster
+  AKS_CLUSTER_NAME: appsec-aks-cluster
 
 jobs:
   manage-access:

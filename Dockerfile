@@ -7,10 +7,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# wizexercise.txt will be copied in root path by COPY . .
-# Since we set WORKDIR to /app, the file ends up at /app/wizexercise.txt
+# appsecexercise.txt will be copied in root path by COPY . .
+# Since we set WORKDIR to /app, the file ends up at /app/appsecexercise.txt
 # To have it in root path, we copy it explicitly:
-COPY wizexercise.txt /
+COPY appsecexercise.txt /
 
 EXPOSE 5000
 

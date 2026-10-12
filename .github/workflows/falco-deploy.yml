@@ -21,8 +21,8 @@ permissions:
   contents: read
 
 env:
-  RESOURCE_GROUP: wiz-exercise-rg
-  AKS_CLUSTER_NAME: wiz-aks-cluster
+  RESOURCE_GROUP: appsec-exercise-rg
+  AKS_CLUSTER_NAME: appsec-aks-cluster
   TFSTATE_CONTAINER: tfstate
 
 jobs:
@@ -72,7 +72,7 @@ jobs:
         echo "Attempting to download Terraform state from Azure Blob Storage..."
         TFSTATE_STORAGE_ACCOUNT=$(az storage account list \
           --resource-group "$RESOURCE_GROUP" \
-          --query "[?contains(name, 'wizbackup')].name | [0]" -o tsv 2>/dev/null)
+          --query "[?contains(name, 'appsecbackup')].name | [0]" -o tsv 2>/dev/null)
         if [ -n "$TFSTATE_STORAGE_ACCOUNT" ]; then
           echo "Found storage account: $TFSTATE_STORAGE_ACCOUNT"
           python3 scripts/download_tfstate.py "$TFSTATE_STORAGE_ACCOUNT" "$TFSTATE_CONTAINER" "$RESOURCE_GROUP"

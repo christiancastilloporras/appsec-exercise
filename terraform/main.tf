@@ -6,32 +6,32 @@ provider "azurerm" {
 # Cloudflare provider for DNS + Origin CA cert management
 # Cloudflare provider for DNS + Origin CA cert management
 
-resource "azurerm_resource_group" "wiz_exercise" {
-  name     = "wiz-exercise-rg"
+resource "azurerm_resource_group" "appsec_exercise" {
+  name     = "appsec-exercise-rg"
   location = var.location
 }
 
 # Virtual Network
-resource "azurerm_virtual_network" "wiz_vnet" {
-  name                = "wiz-vnet"
+resource "azurerm_virtual_network" "appsec_vnet" {
+  name                = "appsec-vnet"
   address_space       = ["10.0.0.0/16"]
-  location            = azurerm_resource_group.wiz_exercise.location
-  resource_group_name = azurerm_resource_group.wiz_exercise.name
+  location            = azurerm_resource_group.appsec_exercise.location
+  resource_group_name = azurerm_resource_group.appsec_exercise.name
 }
 
 # Subnet
-resource "azurerm_subnet" "wiz_subnet" {
-  name                 = "wiz-subnet"
-  resource_group_name  = azurerm_resource_group.wiz_exercise.name
-  virtual_network_name = azurerm_virtual_network.wiz_vnet.name
+resource "azurerm_subnet" "appsec_subnet" {
+  name                 = "appsec-subnet"
+  resource_group_name  = azurerm_resource_group.appsec_exercise.name
+  virtual_network_name = azurerm_virtual_network.appsec_vnet.name
   address_prefixes     = ["10.0.1.0/24"]
 }
 
 # Security Group
-resource "azurerm_network_security_group" "wiz_nsg" {
-  name                = "wiz-nsg"
-  location            = azurerm_resource_group.wiz_exercise.location
-  resource_group_name = azurerm_resource_group.wiz_exercise.name
+resource "azurerm_network_security_group" "appsec_nsg" {
+  name                = "appsec-nsg"
+  location            = azurerm_resource_group.appsec_exercise.location
+  resource_group_name = azurerm_resource_group.appsec_exercise.name
 
   # Allow SSH
   security_rule {
@@ -67,12 +67,12 @@ resource "azurerm_network_security_group" "wiz_nsg" {
 # Mongo VM NIC
 resource "azurerm_network_interface" "mongo_nic" {
   name                = "mongo-nic"
-  location            = azurerm_resource_group.wiz_exercise.location
-  resource_group_name = azurerm_resource_group.wiz_exercise.name
+  location            = azurerm_resource_group.appsec_exercise.location
+  resource_group_name = azurerm_resource_group.appsec_exercise.name
 
   ip_configuration {
     name                          = "mongo-ip"
-    subnet_id                     = azurerm_subnet.wiz_subnet.id
+    subnet_id                     = azurerm_subnet.appsec_subnet.id
     private_ip_address_allocation = "Dynamic"
     public_ip_address_id          = azurerm_public_ip.mongo_pip.id
   }
@@ -81,8 +81,8 @@ resource "azurerm_network_interface" "mongo_nic" {
 # Mongo NSG - only allows AKS cluster traffic on 27017
 resource "azurerm_network_security_group" "mongo_nsg" {
   name                = "mongo-nsg"
-  location            = azurerm_resource_group.wiz_exercise.location
-  resource_group_name = azurerm_resource_group.wiz_exercise.name
+  location            = azurerm_resource_group.appsec_exercise.location
+  resource_group_name = azurerm_resource_group.appsec_exercise.name
 
   # Allow SSH from management IP (for provisioning only)
   security_rule {
@@ -120,8 +120,8 @@ resource "azurerm_network_interface_security_group_association" "mongo_nsg_assoc
 # Mongo Public IP
 resource "azurerm_public_ip" "mongo_pip" {
   name                = "mongo-pip"
-  location            = azurerm_resource_group.wiz_exercise.location
-  resource_group_name = azurerm_resource_group.wiz_exercise.name
+  location            = azurerm_resource_group.appsec_exercise.location
+  resource_group_name = azurerm_resource_group.appsec_exercise.name
   allocation_method   = "Static"
   # Standard SKU (Basic is deprecated, March 31, 2025)
   sku = "Standard"
@@ -130,18 +130,14 @@ resource "azurerm_public_ip" "mongo_pip" {
 # Mongo VM
 resource "azurerm_linux_virtual_machine" "mongo_vm" {
   name                            = "mongo-vm"
-  resource_group_name             = azurerm_resource_group.wiz_exercise.name
-  location                        = azurerm_resource_group.wiz_exercise.location
+  resource_group_name             = azurerm_resource_group.appsec_exercise.name
+  location                        = azurerm_resource_group.appsec_exercise.location
   size                            = var.mongo_vm_size
   admin_username                  = var.vm_admin_username
   admin_password                  = var.vm_admin_password
   disable_password_authentication = false
 
-  # Managed Identity for the VM
-  identity {
-    type = "SystemAssigned"
-  }
-
+  # No managed identity assigned (removed SystemAssigned)
   network_interface_ids = [
     azurerm_network_interface.mongo_nic.id
   ]
@@ -215,9 +211,9 @@ resource "null_resource" "mongo_wait_for_ready" {
 
 # Azure Container Registry
 resource "azurerm_container_registry" "acr" {
-  name                = "wizacr${random_string.storage_suffix.result}"
-  resource_group_name = azurerm_resource_group.wiz_exercise.name
-  location            = azurerm_resource_group.wiz_exercise.location
+  name                = "appsecacr${random_string.storage_suffix.result}"
+  resource_group_name = azurerm_resource_group.appsec_exercise.name
+  location            = azurerm_resource_group.appsec_exercise.location
   sku                 = "Basic"
   admin_enabled       = true
 }
@@ -225,8 +221,8 @@ resource "azurerm_container_registry" "acr" {
 # Subnet for AKS nodes
 resource "azurerm_subnet" "aks_subnet" {
   name                 = "aks-subnet"
-  resource_group_name  = azurerm_resource_group.wiz_exercise.name
-  virtual_network_name = azurerm_virtual_network.wiz_vnet.name
+  resource_group_name  = azurerm_resource_group.appsec_exercise.name
+  virtual_network_name = azurerm_virtual_network.appsec_vnet.name
   address_prefixes     = ["10.0.2.0/24"]
 
   # AKS will automatically manage the service delegation when creating the cluster
@@ -243,8 +239,8 @@ resource "azurerm_subnet" "aks_subnet" {
 # Cloudflare publishes their IP ranges at https://www.cloudflare.com/ips/
 resource "azurerm_network_security_group" "aks_nsg" {
   name                = "aks-app-nsg"
-  location            = azurerm_resource_group.wiz_exercise.location
-  resource_group_name = azurerm_resource_group.wiz_exercise.name
+  location            = azurerm_resource_group.appsec_exercise.location
+  resource_group_name = azurerm_resource_group.appsec_exercise.name
 
   # Allow HTTP from Cloudflare only (ports 80/443 are for web traffic)
   security_rule {
@@ -319,10 +315,10 @@ resource "azurerm_subnet_network_security_group_association" "aks_nsg_assoc" {
 }
 # AKS Cluster - uses same VNet as Mongo VM
 resource "azurerm_kubernetes_cluster" "aks" {
-  name                = "wiz-aks-cluster"
-  location            = azurerm_resource_group.wiz_exercise.location
-  resource_group_name = azurerm_resource_group.wiz_exercise.name
-  dns_prefix          = "wizaks"
+  name                = "appsec-aks-cluster"
+  location            = azurerm_resource_group.appsec_exercise.location
+  resource_group_name = azurerm_resource_group.appsec_exercise.name
+  dns_prefix          = "appsecaks"
   kubernetes_version  = "1.35"
 
   default_node_pool {
@@ -373,7 +369,7 @@ resource "azurerm_role_assignment" "acr_pull" {
 # Used to get the auto-generated Application Routing DNS zone name
 data "azurerm_kubernetes_cluster" "aks" {
   name                = azurerm_kubernetes_cluster.aks.name
-  resource_group_name = azurerm_resource_group.wiz_exercise.name
+  resource_group_name = azurerm_resource_group.appsec_exercise.name
   depends_on          = [azurerm_kubernetes_cluster.aks]
 }
 
@@ -388,9 +384,9 @@ resource "random_string" "storage_suffix" {
 
 # Storage Account for backups (with public access - intentionally vulnerable)
 resource "azurerm_storage_account" "backup_storage" {
-  name                     = "wizbackup${random_string.storage_suffix.result}"
-  resource_group_name      = azurerm_resource_group.wiz_exercise.name
-  location                 = azurerm_resource_group.wiz_exercise.location
+  name                     = "appsecbackup${random_string.storage_suffix.result}"
+  resource_group_name      = azurerm_resource_group.appsec_exercise.name
+  location                 = azurerm_resource_group.appsec_exercise.location
   account_tier             = "Standard"
   account_replication_type = "LRS"
   account_kind             = "StorageV2"

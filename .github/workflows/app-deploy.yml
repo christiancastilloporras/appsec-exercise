@@ -18,8 +18,8 @@ permissions:
   packages: write
 
 env:
-  RESOURCE_GROUP: wiz-exercise-rg
-  AKS_CLUSTER_NAME: wiz-aks-cluster
+  RESOURCE_GROUP: appsec-exercise-rg
+  AKS_CLUSTER_NAME: appsec-aks-cluster
   ACR_NAME: PLACEHOLDER_ACR
   TFSTATE_CONTAINER: tfstate
   TF_VERSION: 1.7.5
@@ -80,7 +80,7 @@ jobs:
         echo "Attempting to download Terraform state from Azure Blob Storage..."
         TFSTATE_STORAGE_ACCOUNT=$(az storage account list \
           --resource-group "$RESOURCE_GROUP" \
-          --query "[?contains(name, 'wizbackup')].name | [0]" -o tsv 2>/dev/null)
+          --query "[?contains(name, 'appsecbackup')].name | [0]" -o tsv 2>/dev/null)
         if [ -n "$TFSTATE_STORAGE_ACCOUNT" ]; then
           echo "Found storage account: $TFSTATE_STORAGE_ACCOUNT"
           python3 scripts/download_tfstate.py "$TFSTATE_STORAGE_ACCOUNT" "$TFSTATE_CONTAINER" "$RESOURCE_GROUP"
@@ -126,7 +126,7 @@ jobs:
       run: |
         IMAGE_TAG="${{ env.IMAGE_TAG }}"
         ACR_FULL="${{ env.ACR_NAME }}.azurecr.io"
-        FULL_IMAGE="$ACR_FULL/wiz-exercise:$IMAGE_TAG"
+        FULL_IMAGE="$ACR_FULL/appsec-exercise:$IMAGE_TAG"
         docker build -t "$FULL_IMAGE" .
         docker push "$FULL_IMAGE"
         echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
@@ -136,7 +136,7 @@ jobs:
       continue-on-error: true
       uses: aquasecurity/trivy-action@v0.36.0
       with:
-        image-ref: '${{ env.ACR_NAME }}.azurecr.io/wiz-exercise:${{ env.IMAGE_TAG }}'
+        image-ref: '${{ env.ACR_NAME }}.azurecr.io/appsec-exercise:${{ env.IMAGE_TAG }}'
         format: 'table'
         output: 'trivy-results.txt'
         severity: 'CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN'
@@ -150,7 +150,7 @@ jobs:
       continue-on-error: true
       uses: aquasecurity/trivy-action@v0.36.0
       with:
-        image-ref: '${{ env.ACR_NAME }}.azurecr.io/wiz-exercise:${{ env.IMAGE_TAG }}'
+        image-ref: '${{ env.ACR_NAME }}.azurecr.io/appsec-exercise:${{ env.IMAGE_TAG }}'
         format: 'sarif'
         output: 'trivy-results.sarif'
         exit-code: '0'
@@ -181,10 +181,10 @@ jobs:
 
     - name: Update ConfigMap with Mongo IP
       run: |
-        kubectl create configmap wiz-app-config \
+        kubectl create configmap appsec-app-config \
           --from-literal=MONGO_IP="${{ env.MONGO_IP }}" \
           --from-literal=MONGO_URI="mongodb://admin:${{ env.MONGO_ADMIN_PASSWORD }}@${{ env.MONGO_IP }}:27017/admin-app?authSource=admin" \
-          --from-literal=SECRET_KEY="wiz-secret-key" \
+          --from-literal=SECRET_KEY="appsec-secret-key" \
           --from-literal=MONGO_ADMIN_PASSWORD="${{ env.MONGO_ADMIN_PASSWORD }}" \
           --dry-run=client -o yaml | kubectl apply -f -
 
@@ -226,7 +226,7 @@ jobs:
       run: |
         if kubectl get secret tls-origin-cert -n default > /dev/null 2>&1; then
           echo "Patching ingress with TLS configuration..."
-          kubectl patch ingress wiz-exercise-ingress --type='merge' -p='{
+          kubectl patch ingress appsec-exercise-ingress --type='merge' -p='{
             "spec": {
               "tls": [
                 {
@@ -261,7 +261,7 @@ jobs:
 
         while [ $ELAPSED -lt $TIMEOUT ]; do
           # For AKS Application Routing (webapprouting), the external IP is on the ingress
-          LB_IP=$(kubectl get ingress wiz-exercise-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          LB_IP=$(kubectl get ingress appsec-exercise-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
           if [ -z "$LB_IP" ]; then
             # Fallback: check services in app-routing-system namespace for LoadBalancer
             # The exact service name may vary depending on AKS version
@@ -285,7 +285,7 @@ jobs:
 
         if [ -z "$LB_IP" ] || [ "$LB_IP" = "<none>" ]; then
           echo "ERROR: LoadBalancer IP not assigned within timeout"
-          kubectl get ingress wiz-exercise-ingress -o wide
+          kubectl get ingress appsec-exercise-ingress -o wide
           kubectl get svc -n app-routing-system -o wide
           exit 1
         fi
@@ -320,7 +320,7 @@ jobs:
 
     - name: Verify Deployment
       run: |
-        kubectl rollout status deployment/wiz-exercise-app --timeout=120s
+        kubectl rollout status deployment/appsec-exercise-app --timeout=120s
         kubectl get pods -o wide
         kubectl get services
         kubectl get ingress
@@ -331,7 +331,7 @@ jobs:
         
         # Test app via service directly (bypasses ingress for troubleshooting)
         echo "=== Testing via port-forward ==="
-        kubectl port-forward svc/wiz-exercise-service 8080:80 &
+        kubectl port-forward svc/appsec-exercise-service 8080:80 &
         PORT_FORWARD_PID=$!
         sleep 5
         curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" http://localhost:8080/ || echo "Port-forward test failed"

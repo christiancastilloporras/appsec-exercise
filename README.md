@@ -1,4 +1,4 @@
-# Appsec Exercise - Vulnerable Web App with MongoDB
+# AppSec Exercise - Vulnerable Web App with MongoDB
 
 ## Overview
 
@@ -75,7 +75,7 @@ AKS → pulls images → Azure Container Registry (ACR)
 ## Directory Structure
 
 ```
-WIZ-exercise/
+appsec-exercise/
 ├── app.py              # Flask web application
 ├── Dockerfile          # Container definition
 ├── requirements.txt    # Python dependencies
@@ -96,7 +96,7 @@ WIZ-exercise/
 ├── scripts/
 │   ├── backup-mongo.sh         # MongoDB backup script (daily cron)
 │   └── download_tfstate.py     # Download Terraform state from Azure Blob Storage
-├── wizexercise.txt         # Root-level ID file
+├── appsecexercise.txt         # Root-level ID file
 ├── .github/workflows/
 │   ├── app-deploy.yml                # App build + deploy (manual)
 │   ├── terraform-apply-destroy.yml   # Terraform apply/destroy with VM sizing
@@ -149,7 +149,7 @@ Or use the dedicated Terraform Apply/Destroy workflow with configurable VM sizes
 ```
 
 Terraform creates:
-- Resource Group: `wiz-exercise-rg`
+- Resource Group: `appsec-exercise-rg`
 - MongoDB VM (Ubuntu) with port 27017 open only to AKS subnet
 - AKS Cluster (1 node, West US) with configurable VM size
 - Azure Container Registry (ACR)
@@ -174,8 +174,8 @@ cd terraform
 terraform apply
 
 cd ..
-docker build -t <acr-name>.azurecr.io/wiz-exercise:latest .
-docker push <acr-name>.azurecr.io/wiz-exercise:latest
+docker build -t <acr-name>.azurecr.io/appsec-exercise:latest .
+docker push <acr-name>.azurecr.io/appsec-exercise:latest
 kubectl apply -f k8s/
 ```
 
@@ -423,7 +423,7 @@ The Azure Storage Account is intentionally misconfigured with public access enab
 
 ```hcl
 resource "azurerm_storage_account" "backup_storage" {
-  name                     = "wizbackup${random_string.storage_suffix.result}"
+  name                     = "appsecbackup${random_string.storage_suffix.result}"
   account_tier             = "Standard"
   account_replication_type  = "LRS"
   account_kind             = "StorageV2"
@@ -495,8 +495,8 @@ resource "azurerm_linux_virtual_machine" "mongo_vm" {
 
 resource "azurerm_public_ip" "mongo_pip" {
   name                = "mongo-pip"
-  location            = azurerm_resource_group.wiz_exercise.location
-  resource_group_name = azurerm_resource_group.wiz_exercise.name
+  location            = azurerm_resource_group.appsec_exercise.location
+  resource_group_name = azurerm_resource_group.appsec_exercise.name
   allocation_method   = "Static"
   # Standard SKU (Basic is deprecated, March 31, 2025)
   sku                 = "Standard"
@@ -566,7 +566,7 @@ STORAGE_ACCOUNT=${STORAGE_ACCOUNT:-""}
 STORAGE_KEY=${STORAGE_KEY:-""}
 CONTAINER_NAME=${CONTAINER_NAME:-"mongo-backups"}
 MONGO_ADMIN_PASSWORD=${MONGO_ADMIN_PASSWORD:-""}
-RESOURCE_GROUP=${RESOURCE_GROUP:-"wiz-exercise-rg"}
+RESOURCE_GROUP=${RESOURCE_GROUP:-"appsec-exercise-rg"}
 NSG_NAME=${NSG_NAME:-"mongo-nsg"}
 RUNNER_IP=$(curl -s https://api.ipify.org)
 
@@ -614,10 +614,10 @@ rm -rf $BACKUP_DIR $BACKUP_FILE
 
 ```hcl
 resource "azurerm_kubernetes_cluster" "aks" {
-  name                = "wiz-aks-cluster"
+  name                = "appsec-aks-cluster"
   location            = var.location
-  resource_group_name = azurerm_resource_group.wiz_exercise.name
-  dns_prefix          = "wizaks"
+  resource_group_name = azurerm_resource_group.appsec_exercise.name
+  dns_prefix          = "appsecaks"
   kubernetes_version  = "1.35"
   
   default_node_pool {
@@ -654,10 +654,9 @@ resource "azurerm_kubernetes_cluster" "aks" {
 | `mongo_connection_string` | MongoDB connection string (`mongodb://admin:<password>@<IP>:27017/admin-app?authSource=admin`) |
 | `mongo_admin_password` | Password for MongoDB admin user (sensitive) |
 | `mongo_vm_private_ip` | Private IP of MongoDB VM |
-| `mongo_vm_identity_principal_id` | Managed Identity principal ID for Mongo VM |
 | `aks_ingress_endpoint` | Ingress URL (`https://<fqdn>`) for the Flask app |
 | `aks_ingress_fqdn` | FQDN for the ingress - stable for cluster lifetime |
-| `app_fqdn` | Cloudflare-proxied HTTPS URL (`https://app.wiz-exercise.cloudguardian.xyz`) |
+| `app_fqdn` | Cloudflare-proxied HTTPS URL (`https://app.appsec-exercise.cloudguardian.xyz`) |
 | `app_cloudflare_hostname` | Cloudflare-proxied hostname for the app |
 | `acr_login_server` | Azure Container Registry login server |
 | `acr_username` | ACR admin username (if enabled) |
@@ -680,17 +679,17 @@ The MongoDB VM private IP is exposed dynamically via Terraform outputs and injec
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: wiz-app-config
+  name: appsec-app-config
 data:
   MONGO_URI: "mongodb://<mongo_vm_private_ip>:27017/admin-app"
-  SECRET_KEY: "wiz-secret-key"
+  SECRET_KEY: "appsec-secret-key"
 ```
 
 The `app-deploy.yml` workflow dynamically captures the private IP after Terraform apply:
 ```bash
-kubectl create configmap wiz-app-config \
+kubectl create configmap appsec-app-config \
   --from-literal=MONGO_URI="mongodb://${MONGO_IP}:27017/admin-app" \
-  --from-literal=SECRET_KEY="wiz-secret-key" \
+  --from-literal=SECRET_KEY="appsec-secret-key" \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
@@ -698,7 +697,7 @@ kubectl create configmap wiz-app-config \
 
 ```
 VNet: 10.0.0.0/16
-├── Subnet: 10.0.1.0/24 (wiz-subnet)
+├── Subnet: 10.0.1.0/24 (appsec-subnet)
 │   └── MongoDB VM (Standard_B1s)
 │       ├── Public IP (Standard SKU, static)
 │       └── NSG: SSH from *, Mongo 27017 only from AKS subnet (10.0.2.0/24)
@@ -712,8 +711,8 @@ VNet: 10.0.0.0/16
 
 | Resource | Name | Role |
 |----------|------|------|
-| ServiceAccount | `wiz-exercise-sa` | App running identity |
-| ClusterRoleBinding | `wiz-exercise-cluster-admin` | ClusterAdmin for service account |
+| ServiceAccount | `appsec-exercise-sa` | App running identity |
+| ClusterRoleBinding | `appsec-exercise-cluster-admin` | ClusterAdmin for service account |
 
 The Flask app pods run with ClusterAdmin privileges through the service account, which is an intentionally over-permissive configuration.
 

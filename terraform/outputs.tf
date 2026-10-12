@@ -25,9 +25,6 @@ output "mongo_vm_private_ip" {
   value = azurerm_network_interface.mongo_nic.private_ip_address
 }
 
-output "mongo_vm_identity_principal_id" {
-  value = azurerm_linux_virtual_machine.mongo_vm.identity[0].principal_id
-}
 
 output "acr_login_server" {
   value = azurerm_container_registry.acr.login_server

@@ -33,7 +33,7 @@ permissions:
   contents: read
 
 env:
-  RESOURCE_GROUP: wiz-exercise-rg
+  RESOURCE_GROUP: appsec-exercise-rg
   TF_VERSION: 1.7.5
   TFSTATE_CONTAINER: tfstate
 
@@ -76,7 +76,7 @@ jobs:
         # Find storage account name from resource group
         TFSTATE_STORAGE_ACCOUNT=$(az storage account list \
           --resource-group "$RESOURCE_GROUP" \
-          --query "[?contains(name, 'wizbackup')].name | [0]" -o tsv 2>/dev/null)
+          --query "[?contains(name, 'appsecbackup')].name | [0]" -o tsv 2>/dev/null)
         if [ -n "$TFSTATE_STORAGE_ACCOUNT" ]; then
           echo "Found storage account: $TFSTATE_STORAGE_ACCOUNT"
           python3 scripts/download_tfstate.py "$TFSTATE_STORAGE_ACCOUNT" "${TFSTATE_CONTAINER}" "$RESOURCE_GROUP"
@@ -142,7 +142,7 @@ jobs:
         # Generate fresh kubeconfig from AKS cluster
         az aks get-credentials \
           --resource-group "$RESOURCE_GROUP" \
-          --name "wiz-aks-cluster" \
+          --name "appsec-aks-cluster" \
           --file $RUNNER_TEMP/aks-artifact/kubeconfig \
           --admin \
           --overwrite-existing 2>/dev/null || \
@@ -180,14 +180,14 @@ jobs:
           echo "No state file found. Resources may have been partially created."
           echo "Attempting Azure CLI cleanup..."
           # List all resource groups matching the naming pattern
-          az group list --query "[?contains(name, 'wiz-exercise')].name" -o tsv | while read rg; do
+          az group list --query "[?contains(name, 'appsec-exercise')].name" -o tsv | while read rg; do
           if [ -n "$rg" ]; then
             echo "Deleting resource group: $rg"
             az group delete --name "$rg" --yes --no-wait
           fi
         done
         echo "Azure CLI cleanup initiated. Waiting for deletion to complete..."
-        for rg in $(az group list --query "[?contains(name, 'wiz-exercise')].name" -o tsv); do
+        for rg in $(az group list --query "[?contains(name, 'appsec-exercise')].name" -o tsv); do
           if [ -n "$rg" ]; then
             echo "Waiting for resource group $rg deletion..."
             az group wait --name "$rg" --deleted --timeout 600 || echo "Resource group $rg may have already been deleted or timeout"

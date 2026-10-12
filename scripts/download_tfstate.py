@@ -8,7 +8,7 @@ import subprocess
 def main():
     storage_account = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("TFSTATE_STORAGE_ACCOUNT", "")
     container_name = sys.argv[2] if len(sys.argv) > 2 else os.environ.get("TFSTATE_CONTAINER", "tfstate")
-    resource_group = sys.argv[3] if len(sys.argv) > 3 else os.environ.get("RESOURCE_GROUP", "wiz-exercise-rg")
+    resource_group = sys.argv[3] if len(sys.argv) > 3 else os.environ.get("RESOURCE_GROUP", "appsec-exercise-rg")
     blob_name = "terraform.tfstate"
 
     if not storage_account:

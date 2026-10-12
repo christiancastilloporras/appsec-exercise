@@ -17,7 +17,7 @@ MONGO_ADMIN_PASSWORD=${MONGO_ADMIN_PASSWORD:-""}
 STORAGE_ACCOUNT=${STORAGE_ACCOUNT:-""}
 STORAGE_KEY=${STORAGE_KEY:-""}
 CONTAINER_NAME=${CONTAINER_NAME:-"mongo-backups"}
-RESOURCE_GROUP=${RESOURCE_GROUP:-"wiz-exercise-rg"}
+RESOURCE_GROUP=${RESOURCE_GROUP:-"appsec-exercise-rg"}
 NSG_NAME=${NSG_NAME:-"mongo-nsg"}
 RUNNER_IP=${RUNNER_IP:-"$(curl -s https://api.ipify.org)"}
 

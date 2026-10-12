@@ -1,7 +1,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: wiz-exercise-ingress
+  name: appsec-exercise-ingress
   annotations:
     # HTTP→HTTPS redirect handled by Cloudflare; NGINX SSL redirect not needed
     # because Cloudflare terminates SSL at the edge and connects via HTTP
@@ -15,7 +15,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: wiz-exercise-service
+            name: appsec-exercise-service
             port:
               number: 80
   # Catch-all for any hostname/IP - allows debugging via bare LB IP
@@ -25,6 +25,6 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: wiz-exercise-service
+            name: appsec-exercise-service
             port:
               number: 80

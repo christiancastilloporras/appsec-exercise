@@ -1,4 +1,4 @@
-# WIZ Exercise - Vulnerable Web App with MongoDB
+# Appsec Exercise - Vulnerable Web App with MongoDB
 
 ## Overview
 

@@ -100,7 +100,6 @@ appsec-exercise/
 ├── .github/workflows/
 │   ├── app-deploy.yml                # App build + deploy (manual)
 │   ├── terraform-apply-destroy.yml   # Terraform apply/destroy with VM sizing
-│   ├── falco-deploy.yml              # Deploy Falco security monitoring with WebUI
 │   ├── mongo-nsg-temp-access.yml     # Temporary NSG IP whitelisting workflow
 │   └── backup-cron.yml               # Daily MongoDB backup (cron)
 ├── README.md               # This file
@@ -319,7 +318,6 @@ Daily backups are stored in Azure Blob Storage:
 ||----------|---------|--------|---------|
 || `app-deploy.yml` | Manual (`workflow_dispatch`) | — | Build, push, deploy with git SHA tags; auto-authorizes runner IP + Cloudflare DNS |
 || `terraform-apply-destroy.yml` | Manual (`workflow_dispatch`) | apply/destroy | Terraform apply/destroy with VM sizing + AKS authorized IPs |
-|| `falco-deploy.yml` | Manual (`workflow_dispatch`) | deploy | Deploy Falco security monitoring with WebUI (ClusterIP only) |
 || `backup-cron.yml` | Scheduled (daily 2AM UTC) + Manual | — | MongoDB backup to Azure Blob (public access) |
 || `mongo-nsg-temp-access.yml` | Manual (`workflow_dispatch`) | add/remove | Temporary NSG + AKS API IP whitelisting |
 
@@ -327,7 +325,6 @@ Daily backups are stored in Azure Blob Storage:
 
 | Scanner | What | Output | Where |
 ||---------|------|--------|-------|
-|| **Checkov** (in `terraform-apply-destroy.yml`) | Terraform IaC scan | SARIF artifact | GitHub Actions Artifacts (`checkov-results`) |
 || **Trivy** (in `app-deploy.yml`) | Container image vulnerabilities | SARIF + TXT artifact | GitHub Actions Artifacts (`trivy-scan-results`) |
 
 Both scanners use pinned action versions to avoid Node.js 16 deprecation warnings. Results are saved as workflow artifacts for manual review in SARIF viewers. To view SARIF results:

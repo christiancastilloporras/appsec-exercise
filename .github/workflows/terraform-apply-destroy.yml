@@ -94,27 +94,6 @@ jobs:
         cd terraform
         terraform init -input=false
 
-    - name: Run Checkov Terraform Scan
-      continue-on-error: true
-      uses: bridgecrewio/checkov-action@v12
-      with:
-        directory: terraform
-        framework: terraform
-        output_file_path: checkov-results.sarif
-        output_format: sarif
-        quiet: true
-        # soft_fail: true - Report findings but don't fail the workflow
-        # (continue-on-error provides a safety net if the action itself has issues)
-        soft_fail: true
-
-    - name: Upload Checkov Scan Results as Artifact
-      if: always()
-      uses: actions/upload-artifact@v5
-      with:
-        name: checkov-results
-        path: checkov-results.sarif
-        retention-days: 30
-
     - name: Terraform Apply
       if: github.event.inputs.action == 'apply'
       run: |

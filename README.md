@@ -59,7 +59,7 @@ AKS → pulls images → Azure Container Registry (ACR)
 | `terraform/outputs.tf` | TF outputs | Public/private IPs, connection strings, kubeconfig |
 | `.github/workflows/app-deploy.yml` | CI/CD | Build → push → deploy to AKS |
 | `.github/workflows/terraform-apply-destroy.yml` | CI/CD | Terraform apply/destroy with VM sizing inputs |
-| `.github/workflows/backup-cron.yml` | Daily job | MongoDB dumps to public Azure Blob Storage |
+
 | `.github/workflows/mongo-nsg-temp-access.yml` | CI/CD | Temporary NSG IP whitelisting for external DB access |
 
 ## Components
@@ -94,14 +94,14 @@ appsec-exercise/
 │   ├── cluster-role-binding.yaml # ClusterRoleBinding
 │   └── seed-script.yaml        # Seed script ConfigMap (embedded seed_db.py)
 ├── scripts/
-│   ├── backup-mongo.sh         # MongoDB backup script (daily cron)
+│   ├── backup-mongo.sh         # MongoDB backup script (manual trigger only)
 │   └── download_tfstate.py     # Download Terraform state from Azure Blob Storage
 ├── appsecexercise.txt         # Root-level ID file
 ├── .github/workflows/
 │   ├── app-deploy.yml                # App build + deploy (manual)
 │   ├── terraform-apply-destroy.yml   # Terraform apply/destroy with VM sizing
 │   ├── mongo-nsg-temp-access.yml     # Temporary NSG IP whitelisting workflow
-│   └── backup-cron.yml               # Daily MongoDB backup (cron)
+│   └── backup-cron.yml               # MongoDB backup (DELETED)
 ├── README.md               # This file
 └── terraform/
     ├── main.tf                     # Main IaC config (VMs, AKS, ACR)
@@ -303,13 +303,6 @@ All contacts are stored in MongoDB (collection `contacts`) and associated with t
 
 ### Backup Access
 
-Daily backups are stored in Azure Blob Storage:
-
-```bash
-# The blob URL is publicly accessible (intentionally misconfigured)
-# Example backup file: https://<storage-account>.blob.core.windows.net/mongo-backups/mongo_<TIMESTAMP>.tar.gz
-```
-
 ---
 
 ### GitHub Actions Workflows
@@ -318,7 +311,6 @@ Daily backups are stored in Azure Blob Storage:
 ||----------|---------|--------|---------|
 || `app-deploy.yml` | Manual (`workflow_dispatch`) | — | Build, push, deploy with git SHA tags; auto-authorizes runner IP + Cloudflare DNS |
 || `terraform-apply-destroy.yml` | Manual (`workflow_dispatch`) | apply/destroy | Terraform apply/destroy with VM sizing + AKS authorized IPs |
-|| `backup-cron.yml` | Scheduled (daily 2AM UTC) + Manual | — | MongoDB backup to Azure Blob (public access) |
 || `mongo-nsg-temp-access.yml` | Manual (`workflow_dispatch`) | add/remove | Temporary NSG + AKS API IP whitelisting |
 
 ### Security Scanning
@@ -350,7 +342,7 @@ Terraform state files are stored in **Azure Blob Storage** (not GitHub Releases)
 |-----------|---------------|---------------|
 | `terraform-apply-destroy.yml` | `az storage account list` + `az storage blob download` | `az storage blob upload` (apply only) |
 | `app-deploy.yml` | `az storage account list` + `az storage blob download` | `az storage blob upload` |
-| `backup-cron.yml` | `az storage account list` + `az storage blob download` | N/A (read-only) |
+
 
 The download step uses Azure CLI with service principal authentication (`--auth-mode login`) to access the private TF state container. The storage account name is discovered dynamically via `az storage account list` using the resource group filter.
 

@@ -33,8 +33,14 @@ jobs:
         crtx_resp=$(curl "${CORTEX_API_URL}/public_api/v1/unified-cli/releases/download-link?os=linux&architecture=amd64" \
           -H "x-xdr-auth-id: ${CORTEX_API_KEY_ID}" \
           -H "Authorization: ${CORTEX_API_KEY}")
-        crtx_url=$(echo $crtx_resp | jq -r ".signed_url")
-        curl -o cortexcli $crtx_url
+        echo "API response: ${crtx_resp}"
+        crtx_url=$(echo "$crtx_resp" | jq -r ".signed_url" 2>/dev/null)
+        if [ -z "$crtx_url" ] || [ "$crtx_url" = "null" ]; then
+          echo "ERROR: Failed to get signed URL from API response"
+          echo "Response was: $crtx_resp"
+          exit 1
+        fi
+        curl -L -o cortexcli "$crtx_url"
         chmod +x cortexcli
         ./cortexcli --version
 

@@ -257,32 +257,42 @@ If Origin CA secrets are absent, the app deploys with HTTP-only (no TLS).
 
 ### Azure Service Principal Setup
 
-The `AZURE_CREDENTIALS` secret must be a JSON object with the key names `clientId`, `clientSecret`, `tenantId`, `subscriptionId` — these are the exact key names `azure/login@v4` expects.
+The `AZURE_CREDENTIALS` secret must be a JSON object with the key names `clientId`, `clientSecret`, `tenantId`, `subscriptionId` — these are the exact key names `azure/login@v3` expects.
 
-**Option 1: Manual JSON (simplest, no deprecation warnings)**
+**Option 1: `az ad sp create-for-rbac --sdk-auth` (simplest, recommended)**
 
 ```bash
-# 1. Create a service principal with the required roles
-az ad sp create-for-rbac --name "github-actions-sp" \
+# Azure Cloud Shell
+az ad sp create-for-rpc --name "github-actions-sp" \
   --role "Owner" \
-  --scopes /subscriptions/YOUR_SUBSCRIPTION_ID
-
-# 2. Copy the full JSON output and set it as the AZURE_CREDENTIALS secret
+  --scopes /subscriptions/YOUR_SUBSCRIPTION_ID \
+  --sdk-auth
 ```
 
-The default output looks like:
+This produces JSON with the correct camelCase key names:
 ```json
 {
-  "appId": "xxxx-xxxx-xxxx-xxxx",
-  "displayName": "github-actions-sp",
-  "name": "http://github-actions-sp",
-  "password": "your-client-secret",
-  "tenant": "xxxx-xxxx-xxxx-xxxx"
+  "clientId": "xxxx-xxxx-xxxx-xxxx",
+  "clientSecret": "your-client-secret",
+  "subscriptionId": "your-subscription-id",
+  "tenantId": "xxxx-xxxx-xxxx-xxxx",
+  "activeDirectoryEndpointUrl": "https://login.microsoftonline.com",
+  "resourceManagerEndpointUrl": "https://management.azure.com/",
+  ...
 }
 ```
 
-Note: the default `appID`/`password`/`tenant` names differ from what `azure/login` needs. **Remap them to**:
+Copy the entire JSON output into the `AZURE_CREDENTIALS` GitHub secret.
 
+**Option 2: `az ad sp create-for-rpc` (without --sdk-auth, then remap manually)**
+
+```bash
+az ad sp create-for-rpc --name "github-actions-sp" \
+  --role "Owner" \
+  --scopes /subscriptions/YOUR_SUBSCRIPTION_ID
+```
+
+This outputs default keys (`appId`, `password`, `tenant`) — remap to:
 ```json
 {
   "clientId": "xxxx-xxxx-xxxx-xxxx",
@@ -294,9 +304,9 @@ Note: the default `appID`/`password`/`tenant` names differ from what `azure/logi
 
 If the JSON is missing any of these four keys, the GitHub Actions workflow will fail early with a clear validation error before attempting login.
 
-**Option 2: OIDC (recommended, no password rotation needed)**
+**Option 3: OIDC (recommended for production, no password rotation needed)**
 
-`azure/login@v4` supports passwordless OpenID Connect federation. This requires creating an OIDC federated credential in Azure AD and passing `client-id`, `tenant-id`, and `subscription-id` as separate GitHub secrets. See [Microsoft's guide](https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure-openid-connect).
+`azure/login@v3` supports passwordless OpenID Connect federation. This requires creating an OIDC federated credential in Azure AD and passing `client-id`, `tenant-id`, and `subscription-id` as individual GitHub secrets instead of a bundled `AZURE_CREDENTIALS` JSON. See [Microsoft's guide](https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure-openid-connect).
 
 
 ### Contact Management
@@ -361,6 +371,8 @@ All workflows use actions compatible with **Node.js 24** (GitHub's latest):
 | `actions/checkout` | v5 |
 | `hashicorp/setup-terraform` | v4 |
 | `azure/login` | v3 |
+| `actions/upload-artifact` | v6 |
+| `actions/setup-node` | v5 |
 | `docker/setup-buildx-action` | v4 |
 | `azure/setup-kubectl` | v5 |
 | `azure/setup-helm` | v4 |

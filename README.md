@@ -120,7 +120,7 @@ appsec-exercise/
 - Docker
 - kubectl
 - GitHub CLI (gh) — for manual pipeline runs
-- AZURE_CREDENTIALS GitHub secret (JSON from `az ad sp create-for-rbac`)
+- AZURE_CREDENTIALS GitHub secret (JSON from `az ad sp create-for-rbac --json-auth`)
 
 ### Step 1: Deploy Infrastructure
 

@@ -120,7 +120,7 @@ appsec-exercise/
 - Docker
 - kubectl
 - GitHub CLI (gh) — for manual pipeline runs
-- AZURE_CREDENTIALS GitHub secret (JSON from `az ad sp create-for-rbac --json-auth`)
+- AZURE_CREDENTIALS GitHub secret — JSON service principal. See "Azure Service Principal Setup" below.
 
 ### Step 1: Deploy Infrastructure
 
@@ -254,6 +254,50 @@ If Origin CA secrets are absent, the app deploys with HTTP-only (no TLS).
 | Username | Password |
 |---|---|
 | admin | admin123 |
+
+### Azure Service Principal Setup
+
+The `AZURE_CREDENTIALS` secret must be a JSON object with the key names `clientId`, `clientSecret`, `tenantId`, `subscriptionId` — these are the exact key names `azure/login@v4` expects.
+
+**Option 1: Manual JSON (simplest, no deprecation warnings)**
+
+```bash
+# 1. Create a service principal with the required roles
+az ad sp create-for-rbac --name "github-actions-sp" \
+  --role "Owner" \
+  --scopes /subscriptions/YOUR_SUBSCRIPTION_ID
+
+# 2. Copy the full JSON output and set it as the AZURE_CREDENTIALS secret
+```
+
+The default output looks like:
+```json
+{
+  "appId": "xxxx-xxxx-xxxx-xxxx",
+  "displayName": "github-actions-sp",
+  "name": "http://github-actions-sp",
+  "password": "your-client-secret",
+  "tenant": "xxxx-xxxx-xxxx-xxxx"
+}
+```
+
+Note: the default `appID`/`password`/`tenant` names differ from what `azure/login` needs. **Remap them to**:
+
+```json
+{
+  "clientId": "xxxx-xxxx-xxxx-xxxx",
+  "clientSecret": "your-client-secret",
+  "tenantId": "xxxx-xxxx-xxxx-xxxx",
+  "subscriptionId": "your-subscription-id"
+}
+```
+
+If the JSON is missing any of these four keys, the GitHub Actions workflow will fail early with a clear validation error before attempting login.
+
+**Option 2: OIDC (recommended, no password rotation needed)**
+
+`azure/login@v4` supports passwordless OpenID Connect federation. This requires creating an OIDC federated credential in Azure AD and passing `client-id`, `tenant-id`, and `subscription-id` as separate GitHub secrets. See [Microsoft's guide](https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure-openid-connect).
+
 
 ### Contact Management
 

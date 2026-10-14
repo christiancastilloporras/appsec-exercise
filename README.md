@@ -259,17 +259,19 @@ If Origin CA secrets are absent, the app deploys with HTTP-only (no TLS).
 
 The `AZURE_CREDENTIALS` secret must be a JSON object with the key names `clientId`, `clientSecret`, `tenantId`, `subscriptionId` — these are the exact key names `azure/login@v3` expects.
 
-**Option 1: `az ad sp create-for-rbac --sdk-auth` (simplest, recommended)**
+**Option 1: `az ad sp create-for-rpc --sdk-auth` (simplest, recommended)**
+
+In Azure Cloud Shell, run:
 
 ```bash
-# Azure Cloud Shell
+SUB_ID=$(az account show --query id -o tsv)
 az ad sp create-for-rpc --name "github-actions-sp" \
   --role "Owner" \
-  --scopes /subscriptions/YOUR_SUBSCRIPTION_ID \
+  --scopes /subscriptions/$SUB_ID \
   --sdk-auth
 ```
 
-This produces JSON with the correct camelCase key names:
+The `--sdk-auth` flag outputs JSON with the correct camelCase key names:
 ```json
 {
   "clientId": "xxxx-xxxx-xxxx-xxxx",
@@ -282,14 +284,17 @@ This produces JSON with the correct camelCase key names:
 }
 ```
 
+> **Note:** `--sdk-auth` is deprecated in newer Azure CLI versions but still works. If `--sdk-auth` is unavailable, use Option 2 below.
+
 Copy the entire JSON output into the `AZURE_CREDENTIALS` GitHub secret.
 
 **Option 2: `az ad sp create-for-rpc` (without --sdk-auth, then remap manually)**
 
 ```bash
+SUB_ID=$(az account show --query id -o tsv)
 az ad sp create-for-rpc --name "github-actions-sp" \
   --role "Owner" \
-  --scopes /subscriptions/YOUR_SUBSCRIPTION_ID
+  --scopes /subscriptions/$SUB_ID
 ```
 
 This outputs default keys (`appId`, `password`, `tenant`) — remap to:

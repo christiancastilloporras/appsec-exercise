@@ -26,7 +26,7 @@ env:
 
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
     - name: Checkout
       uses: actions/checkout@v5
@@ -40,12 +40,33 @@ jobs:
         fi
 
     - name: Install Terraform
-      uses: hashicorp/setup-terraform@v4
+      uses: hashicorp/setup-terraform@v5
       with:
         terraform_version: ${{ env.TF_VERSION }}
 
+    - name: Azure Credentials Validation
+      run: |
+        echo "Validating AZURE_CREDENTIALS JSON key names..."
+        echo "$AZURE_CREDENTIALS" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          required = {'clientId', 'clientSecret', 'tenantId', 'subscriptionId'}
+          keys = set(data.keys())
+          missing = required - keys
+          if missing:
+            print('ERROR: AZURE_CREDENTIALS is missing required keys:', missing, file=sys.stderr)
+            print('Found keys:', sorted(keys), file=sys.stderr)
+            print('azure/login expects: clientId, clientSecret, tenantId, subscriptionId', file=sys.stderr)
+            print('If your secret uses appId/password/tenant/subscription, regenerate it via:', file=sys.stderr)
+            print('  az ad sp create-for-rbac --sdk-auth', file=sys.stderr)
+            sys.exit(1)
+          print('AZURE_CREDENTIALS validated: all required keys present')
+        " || exit 1
+      env:
+        AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+
     - name: Azure Login
-      uses: azure/login@v3
+      uses: azure/login@v4
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
@@ -111,11 +132,10 @@ jobs:
         echo "Kubeconfig written to $HOME/.kube/config"
 
     - name: Install kubectl
-      uses: azure/setup-kubectl@v5
+      uses: azure/setup-kubectl@v6
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v4
-
     - name: Login to ACR
       run: |
         docker login ${{ env.ACR_NAME }}.azurecr.io \
@@ -157,7 +177,7 @@ jobs:
 
     - name: Upload Trivy Scan Results
       if: always()
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: trivy-scan-results
         path: |

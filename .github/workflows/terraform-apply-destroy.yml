@@ -39,19 +39,41 @@ env:
 
 jobs:
   terraform:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v5
 
     - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v4
+      uses: hashicorp/setup-terraform@v5
       with:
         terraform_version: ${{ env.TF_VERSION }}
         cli_config_credentials_token: ${{ secrets.GITHUB_TOKEN }}
 
+    - name: Validate Azure Credentials Secret Format
+      run: |
+        # azure/login@v4 expects JSON keys: clientId, clientSecret, tenantId, subscriptionId
+        echo "Validating AZURE_CREDENTIALS JSON key names..."
+        echo "$AZURE_CREDENTIALS" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          required = {'clientId', 'clientSecret', 'tenantId', 'subscriptionId'}
+          keys = set(data.keys())
+          missing = required - keys
+          if missing:
+            print('ERROR: AZURE_CREDENTIALS is missing required keys:', missing, file=sys.stderr)
+            print('Found keys:', sorted(keys), file=sys.stderr)
+            print('azure/login expects: clientId, clientSecret, tenantId, subscriptionId', file=sys.stderr)
+            print('If your secret uses appId/password/tenant/subscription, regenerate it via:', file=sys.stderr)
+            print('  az ad sp create-for-rbac --sdk-auth', file=sys.stderr)
+            sys.exit(1)
+          print('AZURE_CREDENTIALS validated: all required keys present')
+        " || exit 1
+      env:
+        AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+
     - name: Configure Azure Credentials
-      uses: azure/login@v3
+      uses: azure/login@v4
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
     
@@ -136,7 +158,7 @@ jobs:
     - name: Upload AKS Kubeconfig Artifact
       if: always() && github.event.inputs.action == 'apply'
       continue-on-error: true
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: aks-kubeconfig
         path: ${{ runner.temp }}/aks-artifact/kubeconfig

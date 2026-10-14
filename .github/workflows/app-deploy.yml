@@ -47,20 +47,33 @@ jobs:
     - name: Azure Credentials Validation
       run: |
         echo "Validating AZURE_CREDENTIALS JSON key names..."
-        echo "$AZURE_CREDENTIALS" | python3 -c "
-          import sys, json
-          data = json.load(sys.stdin)
-          required = {'clientId', 'clientSecret', 'tenantId', 'subscriptionId'}
-          keys = set(data.keys())
-          missing = required - keys
-          if missing:
+        python3 << 'PYEOF'
+        import sys, json, os
+
+        creds_raw = os.environ.get("AZURE_CREDENTIALS", "")
+        if not creds_raw:
+            print("ERROR: AZURE_CREDENTIALS secret is not set or empty", file=sys.stderr)
+            sys.exit(1)
+
+        try:
+            data = json.loads(creds_raw)
+        except json.JSONDecodeError as e:
+            print(f"ERROR: AZURE_CREDENTIALS is not valid JSON: {e}", file=sys.stderr)
+            sys.exit(1)
+
+        required = {'clientId', 'clientSecret', 'tenantId', 'subscriptionId'}
+        keys = set(data.keys())
+        missing = required - keys
+
+        if missing:
             print('ERROR: AZURE_CREDENTIALS is missing required keys:', missing, file=sys.stderr)
             print('Found keys:', sorted(keys), file=sys.stderr)
             print('azure/login expects camelCase keys: clientId, clientSecret, tenantId, subscriptionId', file=sys.stderr)
             print('If your JSON has appId/password/tenant/subscription, remap the keys manually', file=sys.stderr)
             sys.exit(1)
-          print('AZURE_CREDENTIALS validated: all required keys present')
-        " || exit 1
+
+        print('AZURE_CREDENTIALS validated: all required keys present')
+        PYEOF
       env:
         AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
 

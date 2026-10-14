@@ -45,7 +45,7 @@ jobs:
       uses: actions/checkout@v5
 
     - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v5
+      uses: hashicorp/setup-terraform@v4
       with:
         terraform_version: ${{ env.TF_VERSION }}
         cli_config_credentials_token: ${{ secrets.GITHUB_TOKEN }}
@@ -72,10 +72,10 @@ jobs:
         AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
 
     - name: Configure Azure Credentials
-      uses: azure/login@v4
+      uses: azure/login@v3
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
-    
+
     - name: Grant RBAC Permission for Role Assignment
       run: |
         # The service principal needs User Access Administrator at subscription level

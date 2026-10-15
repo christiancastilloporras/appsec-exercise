@@ -211,13 +211,14 @@ resource "null_resource" "mongo_wait_for_ready" {
 
 # Azure Container Registry
 # Basic SKU with public access (acceptable for dev environment)
-# Standard SKU does not support public_network_access_enabled = false
+# Basic SKU does not support disabling public network access
 resource "azurerm_container_registry" "acr" {
   name                = "appsecacr${random_string.storage_suffix.result}"
   resource_group_name = azurerm_resource_group.appsec_exercise.name
   location            = azurerm_resource_group.appsec_exercise.location
   sku                 = "Basic"  # Basic SKU supports public access
   admin_enabled       = true
+  public_network_access_enabled = true
 }
 
 # Subnet for AKS nodes
@@ -396,6 +397,11 @@ resource "azurerm_storage_account" "backup_storage" {
 
   public_network_access_enabled = true
   min_tls_version               = "TLS1_2"
+
+  network_rules {
+    default_action = "Deny"
+    bypass         = ["AzureServices"]
+  }
 }
 
 # Blob container for MongoDB backups

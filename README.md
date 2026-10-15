@@ -137,8 +137,8 @@ terraform apply
 Workflow inputs:
 - `action`: apply (or destroy to tear down)
 - `location`: West US (default)
-- `mongo_vm_size`: Standard_B1s (default) — MongoDB VM size
-- `aks_vm_size`: Standard_B2s (default) — AKS node size (minimum for AKS: 2vCPU, 4GB RAM)
+- `mongo_vm_size`: Standard_B2ps_v2 (default) — MongoDB VM size (2vCPU, 4GB — B2s/B1s not available in westus)
+- `aks_vm_size`: Standard_B2ps_v2 (default) — AKS node size (2vCPU, 4GB — B2s/B2s_v2 not available in westus)
 - `aks_authorized_ips`: Comma-separated IPs/CIDRs to authorize on AKS API server
 
 Terraform creates:
@@ -335,8 +335,8 @@ All contacts stored in MongoDB (`contacts` collection), associated with the auth
 |---|---|---|
 | `action` | `apply` | apply or destroy |
 | `location` | `West US` | Azure region |
-| `mongo_vm_size` | `Standard_B1s` | MongoDB VM size (1vCPU, 1GB RAM) |
-| `aks_vm_size` | `Standard_B2s` | AKS node VM size (2vCPU, 4GB RAM — minimum for AKS) |
+| `mongo_vm_size` | `Standard_B2ps_v2` | MongoDB VM size (2vCPU, 4GB — B2s/B1s not available in westus) |
+| `aks_vm_size` | `Standard_B2ps_v2` | AKS node VM size (2vCPU, 4GB — B2s/B2s_v2 not available in westus) |
 | `aks_authorized_ips` | `""` | Comma-separated IPs/CIDRs to authorize on AKS API server |
 
 ### Terraform State Management
@@ -416,8 +416,8 @@ The default NSG behavior denies all inbound traffic not matching an allow rule.
 | Variable | Default | Description |
 |---|---|---|
 | `location` | `West US` | Azure region for all resources |
-| `mongo_vm_size` | `Standard_B1s` | MongoDB VM size (1vCPU, 1GB RAM) |
-| `aks_vm_size` | `Standard_B2s` | AKS node pool VM size (2vCPU, 4GB RAM — minimum for AKS) |
+| `mongo_vm_size` | `Standard_B2ps_v2` | MongoDB VM size (2vCPU, 4GB — B2s/B1s not available in westus) |
+| `aks_vm_size` | `Standard_B2ps_v2` | AKS node pool VM size (2vCPU, 4GB — B2s/B2s_v2 not available in westus) |
 | `vm_admin_username` | `azureuser` | Admin username for Mongo VM |
 | `vm_admin_password` | `P@ssw0rd1234!` | Admin password for Mongo VM |
 | `mongo_admin_password` | `admin123` | MongoDB admin user password |
@@ -518,12 +518,12 @@ The `start-mongod.sh.tftpl` template is rendered by Terraform's `templatefile()`
 ```
 VNet: 10.0.0.0/16
 ├── Subnet: 10.0.1.0/24 (appsec-subnet)
-│   └── MongoDB VM (Standard_B1s)
+│   └── MongoDB VM (Standard_B2ps_v2)
 │       ├── Private IP (dynamic)
 │       ├── Public IP (Standard SKU, static)
 │       └── NSG: SSH from *, Mongo 27017 only from AKS subnet (10.0.2.0/24)
 ├── Subnet: 10.0.2.0/24 (aks-subnet)
-│   └── AKS Cluster (1 node, Standard_B2s, K8s 1.35)
+│   └── AKS Cluster (1 node, Standard_B2ps_v2, K8s 1.35)
 │       └── Application Routing Add-on (ingress via webapprouting.kubernetes.azure.com)
 └── Service CIDR: 10.0.3.0/24 (DNS: 10.0.3.10)
 ```

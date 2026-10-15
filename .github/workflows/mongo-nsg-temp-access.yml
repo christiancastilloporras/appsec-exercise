@@ -30,10 +30,22 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v5
 
+    - name: Build creds JSON from separated secrets
+      id: build_creds
+      env:
+        AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      run: |
+        cat > "$GITHUB_OUTPUT" <<EOF
+        creds_json={"clientId":"${AZURE_CLIENT_ID}","clientSecret":"${AZURE_CLIENT_SECRET}","tenantId":"${AZURE_TENANT_ID}","subscriptionId":"${AZURE_SUBSCRIPTION_ID}","activeDirectoryAppIdUrl":"https://login.microsoftonline.com/${AZURE_TENANT_ID}/oauth2/authorize","activeDirectoryGraphResourceId":"https://graph.windows.net/","activeDirectoryServiceEndpointResourceId":"https://management.azure.com/"}
+        EOF
+
     - name: Azure Login
       uses: azure/login@v3
       with:
-        creds: ${{ format('{"clientId":"{0}","clientSecret":"{1}","tenantId":"{2}","subscriptionId":"{3}","activeDirectoryAppIdUrl":"https://login.microsoftonline.com/{2}/oauth2/authorize","activeDirectoryGraphResourceId":"https://graph.windows.net/","activeDirectoryServiceEndpointResourceId":"https://management.azure.com/"}', secrets.AZURE_CLIENT_ID, secrets.AZURE_CLIENT_SECRET, secrets.AZURE_TENANT_ID, secrets.AZURE_SUBSCRIPTION_ID) }}
+        creds: ${{ steps.build_creds.outputs.creds_json }}
     
     - name: Add Temporary Access (Mongo NSG + AKS API Server)
       if: ${{ inputs.action == 'add' }}

@@ -237,7 +237,7 @@ Uses **Cloudflare Origin CA Certificate** for TLS:
 
 If Origin CA secrets are absent, the app deploys with HTTP-only (no TLS).
 
-The workflows pass four separate GitHub secrets (`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`) into `azure/login@v3` via a runtime-assembled `creds` JSON string — each secret is stored independently in GitHub, no single `AZURE_CREDENTIALS` JSON blob.
+Each workflow assembles the four independent GitHub secrets (`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`) into a `creds` JSON string at runtime via a dedicated shell step. The assembled JSON is passed to `azure/login@v3` as the `creds` input. This keeps each secret individually manageable in GitHub without a single `AZURE_CREDENTIALS` JSON blob, and `azure/login@v3` accepts `creds` with all four fields (`clientId`, `clientSecret`, `tenantId`, `subscriptionId`) for service-principal login. No `id-token: write` permission is required (this is service-principal auth, not OIDC federation).
 
 ### Required GitHub Secrets
 
@@ -263,7 +263,7 @@ The workflows pass four separate GitHub secrets (`AZURE_CLIENT_ID`, `AZURE_CLIEN
 
 ### Azure Service Principal Setup
 
-Each workflow passes four independent GitHub secrets (`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`) to `azure/login@v3` via a runtime-assembled `creds` JSON string. This keeps each secret independently manageable in GitHub without a single `AZURE_CREDENTIALS` JSON blob.
+Each workflow passes four independent GitHub secrets (`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`) to `azure/login@v3` by assembling them into a `creds` JSON string at runtime via a dedicated shell step. The assembled JSON is passed as the `creds` input, which expects all four fields (`clientId`, `clientSecret`, `tenantId`, `subscriptionId`) for service-principal login. This keeps each secret individually manageable in GitHub without a single `AZURE_CREDENTIALS` JSON blob.
 
 **Generate the service principal and extract each value individually:**
 
@@ -296,7 +296,11 @@ Create four GitHub secrets from the output, using **these exact names**:
 
 **Authentication mode used in workflows:****
 
-The workflows pass four separate GitHub secrets (`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`) into `azure/login@v3` by assembling them into a `creds` JSON string at runtime using expressions. This keeps each secret individually manageable while producing the format the action expects for service-principal login. No `id-token: write` permission is required.
+Each workflow assembles four independent GitHub secrets (`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`) into a `creds` JSON string at runtime via a dedicated shell step. The assembled JSON is passed to `azure/login@v3` as the `creds` input, which expects all four fields (`clientId`, `clientSecret`, `tenantId`, `subscriptionId`) for service-principal login. This keeps each secret individually manageable in GitHub without a single `AZURE_CREDENTIALS` JSON blob. No `id-token: write` permission is required (this is service-principal auth, not OIDC federation).
+
+**OIDC (recommended for production, no password rotation needed):**
+
+`azure/login@v3` also supports passwordless OpenID Connect federation. This requires creating an OIDC federated credential in Azure AD and using only `client-id`, `tenant-id`, `subscription-id` inputs (no client secret). See [Microsoft's guide](https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure-openid-connect).
 
 
 ### Contact Management

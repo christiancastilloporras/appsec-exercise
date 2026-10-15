@@ -4,12 +4,14 @@ variable "location" {
 
 variable "mongo_vm_size" {
   description = "Size of the MongoDB VM"
-  default     = "Standard_B1s"
+  # Standard_B1s not available in westus; using B2pls_v2 (2vCPU, 4GB RAM, burstable)
+  default = "Standard_B2pls_v2"
 }
 
 variable "aks_vm_size" {
   description = "Size of the AKS nodes (minimum: Standard_B2s - 2vCPU, 4GB RAM)"
-  default     = "Standard_B2s"
+  # Standard_B2s not available in westus; using B2pls_v2 (2vCPU, 4GB RAM, burstable)
+  default = "Standard_B2pls_v2"
 }
 
 variable "vm_admin_username" {

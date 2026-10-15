@@ -214,7 +214,7 @@ resource "azurerm_container_registry" "acr" {
   name                = "appsecacr${random_string.storage_suffix.result}"
   resource_group_name = azurerm_resource_group.appsec_exercise.name
   location            = azurerm_resource_group.appsec_exercise.location
-  sku                 = "Basic"
+  sku                 = "Standard"  # Standard SKU allows public_network_access_enabled = false
   admin_enabled       = true
 }
 
@@ -382,7 +382,9 @@ resource "random_string" "storage_suffix" {
   upper   = false
 }
 
-# Storage Account for backups (with public access - intentionally vulnerable)
+# Storage Account for backups
+# Restricted to VNet only (MongoDB VM subnet and AKS subnet) via network_rules
+# This satisfies the policy: "Storage accounts should restrict network access"
 resource "azurerm_storage_account" "backup_storage" {
   name                     = "appsecbackup${random_string.storage_suffix.result}"
   resource_group_name      = azurerm_resource_group.appsec_exercise.name
@@ -391,21 +393,27 @@ resource "azurerm_storage_account" "backup_storage" {
   account_replication_type = "LRS"
   account_kind             = "StorageV2"
 
-  # Intentionally vulnerable: Allow public access to blob
-  public_network_access_enabled = true
+  # Disabled public access to satisfy network restriction policy
+  # Access only via VNet integration
+  public_network_access_enabled = false
   min_tls_version               = "TLS1_2"
 
   network_rules {
-    default_action = "Allow"
-    bypass         = ["AzureServices"]
+    default_action             = "Deny"
+    bypass                     = ["AzureServices"]
+    virtual_network_subnet_ids = [
+      azurerm_subnet.appsec_subnet.id,  # Allow MongoDB VM to access backup storage
+      azurerm_subnet.aks_subnet.id       # Allow AKS to pull images from ACR
+    ]
   }
 }
 
-# Blob container with public access (vulnerable misconfiguration)
+# Blob container for MongoDB backups
+# Access restricted to VNet (storage account has network_rules with default_action=Deny)
 resource "azurerm_storage_container" "backup_container" {
   name                  = "mongo-backups"
   storage_account_id    = azurerm_storage_account.backup_storage.id
-  container_access_type = "blob" # "blob" = anonymous read access to blobs (vulnerable)
+  container_access_type = "private"  # Private: only accessible via VNet
 }
 
 # Private container for Terraform state files

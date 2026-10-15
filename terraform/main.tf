@@ -216,9 +216,10 @@ resource "azurerm_container_registry" "acr" {
   name                = "appsecacr${random_string.storage_suffix.result}"
   resource_group_name = azurerm_resource_group.appsec_exercise.name
   location            = azurerm_resource_group.appsec_exercise.location
-  sku                 = "Basic"  # Basic SKU supports public access
+  sku                 = "Basic"  # Basic SKU supports public access by default
   admin_enabled       = true
-  public_network_access_enabled = true
+  # Note: public_network_access_enabled is NOT supported for Basic SKU.
+  # Basic SKU is publicly accessible by default, which is the desired behavior.
 }
 
 # Subnet for AKS nodes
@@ -401,7 +402,7 @@ resource "azurerm_storage_account" "backup_storage" {
   min_tls_version               = "TLS1_2"
 
   network_rules {
-    default_action = "Deny"
+    default_action = "Allow"  # Must allow public access for backup container blob exposure
     bypass         = ["AzureServices"]
     # GitHub Actions runners need access to upload/download TF state.
     # Add runner IP dynamically via workflow, but include GitHub Actions IP ranges as baseline.

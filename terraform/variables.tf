@@ -4,16 +4,16 @@ variable "location" {
 
 variable "mongo_vm_size" {
   description = "Size of the MongoDB VM"
-  # Standard_B1s, B2s, and B2ps_v2 (ARM64 only) not available or incompatible in westus;
-  # using D2s_v3 (x64, 2vCPU, 8GB) which is available in westus
-  default = "Standard_D2s_v3"
+  # Standard_D2s_v3 is not available in westus for this subscription.
+  # Standard_D2s_v6 (x64, 2vCPU, 8GB) is available and meets requirements.
+  default = "Standard_D2s_v6"
 }
 
 variable "aks_vm_size" {
-  description = "Size of the AKS nodes (minimum: Standard_B2s - 2vCPU, 4GB RAM)"
-  # Standard_B2s and Standard_B2s_v2 not available in westus;
-  # using D2s_v3 (x64, 2vCPU, 8GB) which is available in westus
-  default = "Standard_D2s_v3"
+  description = "Size of the AKS nodes (minimum: Standard_D2s_v6 - 2vCPU, 8GB RAM)"
+  # Standard_D2s_v3 not available in westus for this subscription.
+  # Standard_D2s_v6 (x64, 2vCPU, 8GB) is available and meets requirements.
+  default = "Standard_D2s_v6"
 }
 
 variable "vm_admin_username" {

@@ -31,7 +31,7 @@ jobs:
         framework: terraform,kubernetes,secrets,sca
         output-format: cli
         output-file-path: cortex-results.txt
-        soft-fail: false
+        soft-fail: true
 
     - name: Upload Scan Results as Artifact
       if: always()

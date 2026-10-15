@@ -30,13 +30,4 @@ jobs:
         upload-mode: upload
         framework: terraform,kubernetes,secrets,sca
         output-format: cli
-        output-file-path: cortex-results.txt
         soft-fail: true
-
-    - name: Upload Scan Results as Artifact
-      if: always()
-      uses: actions/upload-artifact@v6
-      with:
-        name: cortex-scan-results
-        path: cortex-results.txt
-        retention-days: 30

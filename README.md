@@ -322,7 +322,7 @@ All contacts stored in MongoDB (`contacts` collection), associated with the auth
 
 | Scanner | What | Output | Where |
 |---|---|---|---|
-| **Cortex Cloud Scan** (Action in `cortex-code-scan.yml`) | Full repository code scan (Terraform, Kubernetes, secrets, SCA); non-blocking (`soft-fail: true`) | CLI text + findings in Cortex XDR | Artifact (`cortex-scan-results`) + Cortex XDR console |
+| **Cortex Cloud Scan** (Action in `cortex-code-scan.yml`) | Full repository code scan (Terraform, Kubernetes, secrets, SCA); non-blocking (`soft-fail: true`) | CLI text in workflow logs + findings in Cortex XDR | Workflow logs + Cortex XDR console |
 | **Trivy** (in `app-deploy.yml`) | Container image vulnerabilities | SARIF + TXT artifact | GitHub Actions Artifacts (`trivy-scan-results`) |
 
 ### Workflow Inputs (terraform-apply-destroy.yml)

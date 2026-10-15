@@ -29,7 +29,6 @@ jobs:
         branch: ${{ github.ref_name }}
         upload-mode: upload
         framework: terraform,kubernetes,secrets,sca
-        severity: critical,high,medium
         output-format: cli
         output-file-path: cortex-results.txt
         soft-fail: false

@@ -169,7 +169,7 @@ jobs:
         image: '${{ env.ACR_NAME }}.azurecr.io/appsec-exercise:${{ env.IMAGE_TAG }}'
         ci-pipeline-id: ${{ github.run_id }}
         ci-build-id: ${{ github.run_number }}
-        image-output-format: json
+        image-output-format: human-readable
         output-format: cli
         output-file-path: cortex-image-results.json
         soft-fail: true

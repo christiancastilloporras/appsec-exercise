@@ -16,13 +16,13 @@ on:
         required: false
         default: 'West US'
       mongo_vm_size:
-        description: 'Mongo VM Size (e.g. Standard_B1s, Standard_B2ps_v2, Standard_D2s_v3)'
+        description: 'Mongo VM Size (e.g. Standard_D2s_v3, Standard_D4s_v3)'
         required: false
-        default: 'Standard_B2ps_v2'
+        default: 'Standard_D2s_v3'
       aks_vm_size:
-        description: 'AKS Node VM Size (e.g. Standard_B2ps_v2, Standard_D2s_v3, Standard_D4s_v3)'
+        description: 'AKS Node VM Size (e.g. Standard_D2s_v3, Standard_D4s_v3)'
         required: false
-        default: 'Standard_B2ps_v2'
+        default: 'Standard_D2s_v3'
       aks_authorized_ips:
         description: 'Comma-separated list of IPs/CIDRs to authorize on AKS API server (e.g., 123.45.67.89/32)'
         required: false

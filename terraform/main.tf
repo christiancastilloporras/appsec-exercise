@@ -398,9 +398,23 @@ resource "azurerm_storage_account" "backup_storage" {
   public_network_access_enabled = true
   min_tls_version               = "TLS1_2"
 
+  # Explicitly allow public blob access for the intentionally-vulnerable backup container
+  allow_blob_public_access = true
+
   network_rules {
     default_action = "Deny"
     bypass         = ["AzureServices"]
+    # GitHub Actions runners need access to upload/download TF state.
+    # Add runner IP dynamically via workflow, but include GitHub Actions IP ranges as baseline.
+    ip_rules = [
+      # GitHub Actions outbound IPs (https://api.github.com/meta)
+      "140.82.112.0/20",  # GitHub.comActions
+      "185.199.156.0/22",
+      "192.30.252.0/22",
+      "185.199.158.0/23",
+      "140.82.116.0/22",
+      "143.55.64.0/20",
+    ]
   }
 }
 

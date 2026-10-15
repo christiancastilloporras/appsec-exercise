@@ -61,7 +61,7 @@ AKS → pulls images → Azure Container Registry (ACR)
 | `.github/workflows/app-deploy.yml` | CI/CD | Build → push → deploy to AKS |
 | `.github/workflows/terraform-apply-destroy.yml` | CI/CD | Terraform apply/destroy with VM sizing inputs |
 | `.github/workflows/mongo-nsg-temp-access.yml` | CI/CD | Temporary NSG IP whitelisting for external DB access |
-| `.github/workflows/cortex-code-scan.yml` | CI/CD | Cortex CLI code scanner (push to main) |
+| `.github/workflows/cortex-code-scan.yml` | CI/CD | Cortex code security scanner via GitHub Action (push to main) |
 
 ## Components
 
@@ -108,7 +108,7 @@ appsec-exercise/
     ├── app-deploy.yml                          # App build + deploy (manual)
     ├── terraform-apply-destroy.yml             # Terraform apply/destroy (manual)
     ├── mongo-nsg-temp-access.yml               # Temporary NSG IP whitelisting (manual)
-    └── cortex-code-scan.yml                    # Cortex CLI code scan (push + manual)
+    └── cortex-code-scan.yml                    # Cortex code security scan (push + manual)
 ```
 
 ## Deployment Steps
@@ -251,6 +251,7 @@ The workflows use `azure/login@v3` in **separated-credentials mode** — four in
 | `CLOUDFLARE_API_TOKEN` | API token with `Zone:DNS:Edit` permission | Yes |
 | `CF_ORIGIN_CA_CERT` | Origin CA certificate (PEM) | No (for HTTPS) |
 | `CF_ORIGIN_CA_KEY` | Origin CA private key (PEM) | No (for HTTPS) |
+| `CORTEX_API_BASE_URL` | Cortex XDR API base URL for code scanning | No |
 | `CORTEX_API_KEY` | Cortex XDR API key for code scanning | No |
 | `CORTEX_API_KEY_ID` | Cortex XDR API key ID for code scanning | No |
 
@@ -315,13 +316,13 @@ All contacts stored in MongoDB (`contacts` collection), associated with the auth
 | `app-deploy.yml` | Manual (`workflow_dispatch`) | — | Build, push, deploy with git SHA tags; auto-authorizes runner IP + Cloudflare DNS |
 | `terraform-apply-destroy.yml` | Manual (`workflow_dispatch`) | apply/destroy | Terraform apply/destroy with VM sizing + AKS authorized IPs |
 | `mongo-nsg-temp-access.yml` | Manual (`workflow_dispatch`) | add/remove | Temporary NSG + AKS API IP whitelisting |
-| `cortex-code-scan.yml` | Push to `main` + Manual | scan | Cortex CLI code scanner on the repository |
+| `cortex-code-scan.yml` | Push to `main` + Manual | scan | Cortex code security scanner (GitHub Action) on the repository |
 
 ### Security Scanning
 
 | Scanner | What | Output | Where |
 |---|---|---|---|
-| **Cortex CLI** (in `cortex-code-scan.yml`) | Full repository code scan | Findings in Cortex XDR | Cortex XDR console |
+| **Cortex Cloud Scan** (Action in `cortex-code-scan.yml`) | Full repository code scan (Terraform, Kubernetes, secrets, SCA) | CLI text + findings in Cortex XDR | Artifact (`cortex-scan-results`) + Cortex XDR console |
 | **Trivy** (in `app-deploy.yml`) | Container image vulnerabilities | SARIF + TXT artifact | GitHub Actions Artifacts (`trivy-scan-results`) |
 
 ### Workflow Inputs (terraform-apply-destroy.yml)

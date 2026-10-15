@@ -1,4 +1,4 @@
-name: Cortex CLI Code Scan
+name: Cortex Code Security Scan
 
 on:
   push:
@@ -6,53 +6,38 @@ on:
       - main
   workflow_dispatch:
 
-env:
-  CORTEX_API_KEY: ${{secrets.CORTEX_API_KEY}}
-  CORTEX_API_KEY_ID: ${{secrets.CORTEX_API_KEY_ID}}
-  CORTEX_API_URL: https://api-cloudguardian.xdr.us.paloaltonetworks.com
-
 jobs:
   cortex-code-scan:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v5
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v5
+    - name: Run Cortex Code Security Scan
+      id: scan
+      uses: PaloAltoNetworks/cortex-cloud-scan@v1
       with:
-        node-version: 22
+        scan-type: code
+        api-base-url: ${{ secrets.CORTEX_API_BASE_URL }}
+        api-key: ${{ secrets.CORTEX_API_KEY }}
+        api-key-id: ${{ secrets.CORTEX_API_KEY_ID }}
+        directory: .
+        repo-id: ${{ github.repository }}
+        branch: ${{ github.ref_name }}
+        upload-mode: upload
+        framework: terraform,kubernetes,secrets,sca
+        severity: critical,high,medium
+        output-format: cli
+        output-file-path: cortex-results.txt
+        soft-fail: false
 
-    - name: Verify Node.js Version
-      run: node -v
-
-    - name: Download cortexcli
-      run: |
-        set -x
-        crtx_resp=$(curl "${CORTEX_API_URL}/public_api/v1/unified-cli/releases/download-link?os=linux&architecture=amd64" \
-          -H "x-xdr-auth-id: ${CORTEX_API_KEY_ID}" \
-          -H "Authorization: ${CORTEX_API_KEY}")
-        echo "API response: ${crtx_resp}"
-        crtx_url=$(echo "$crtx_resp" | jq -r ".signed_url" 2>/dev/null)
-        if [ -z "$crtx_url" ] || [ "$crtx_url" = "null" ]; then
-          echo "ERROR: Failed to get signed URL from API response"
-          echo "Response was: $crtx_resp"
-          exit 1
-        fi
-        curl -L -o cortexcli "$crtx_url"
-        chmod +x cortexcli
-        ./cortexcli --version
-
-    - name: Run Cortex CLI Code Scan
-      run: |
-        ./cortexcli \
-          --api-base-url "${CORTEX_API_URL}" \
-          --api-key "${CORTEX_API_KEY}" \
-          --api-key-id "${CORTEX_API_KEY_ID}" \
-          code scan \
-          --directory "${{github.workspace}}" \
-          --repo-id "${{github.repository}}" \
-          --branch "${{github.ref_name}}" \
-          --source "GITHUB_ACTIONS" \
-          --repo-url "${{github.server_url}}/${{github.repository}}"
+    - name: Upload Scan Results as Artifact
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: cortex-scan-results
+        path: cortex-results.txt
+        retention-days: 30

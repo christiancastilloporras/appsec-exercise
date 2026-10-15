@@ -395,11 +395,10 @@ resource "azurerm_storage_account" "backup_storage" {
   account_replication_type = "LRS"
   account_kind             = "StorageV2"
 
+  # Public network access + container-level blob access (container_access_type = "blob")
+  # provides the intentionally-vulnerable public backup exposure for this exercise
   public_network_access_enabled = true
   min_tls_version               = "TLS1_2"
-
-  # Explicitly allow public blob access for the intentionally-vulnerable backup container
-  allow_blob_public_access = true
 
   network_rules {
     default_action = "Deny"

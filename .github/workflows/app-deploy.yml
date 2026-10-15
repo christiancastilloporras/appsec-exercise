@@ -181,7 +181,7 @@ jobs:
         name: cortex-scan-results
         path: |
           cortex-image-results.json
-        retention-days: 30
+        retention-days: 5
 
     - name: Deploy ACR Secret to Kubernetes
       run: |

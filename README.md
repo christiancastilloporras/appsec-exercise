@@ -237,7 +237,7 @@ Uses **Cloudflare Origin CA Certificate** for TLS:
 
 If Origin CA secrets are absent, the app deploys with HTTP-only (no TLS).
 
-The workflows use `azure/login@v3` in **separated-credentials mode** — four independent GitHub secrets instead of a single JSON blob.
+The workflows pass four separate GitHub secrets (`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`) into `azure/login@v3` via a runtime-assembled `creds` JSON string — each secret is stored independently in GitHub, no single `AZURE_CREDENTIALS` JSON blob.
 
 ### Required GitHub Secrets
 
@@ -263,7 +263,7 @@ The workflows use `azure/login@v3` in **separated-credentials mode** — four in
 
 ### Azure Service Principal Setup
 
-Each workflow uses `azure/login@v3` in **separated-credentials mode** — four independent GitHub secrets instead of a single `AZURE_CREDENTIALS` JSON blob. This avoids JSON parsing errors and key-name mismatch failures.
+Each workflow passes four independent GitHub secrets (`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`) to `azure/login@v3` via a runtime-assembled `creds` JSON string. This keeps each secret independently manageable in GitHub without a single `AZURE_CREDENTIALS` JSON blob.
 
 **Generate the service principal and extract each value individually:**
 
@@ -294,9 +294,9 @@ Create four GitHub secrets from the output, using **these exact names**:
 | `tenant` | `AZURE_TENANT_ID` |
 | (from `az account show`) | `AZURE_SUBSCRIPTION_ID` |
 
-**OIDC (recommended for production, no password rotation needed):**
+**Authentication mode used in workflows:****
 
-`azure/login@v3` supports passwordless OpenID Connect federation. Requires creating an OIDC federated credential in Azure AD and passing `client-id`, `tenant-id`, `subscription-id`, and `client-secret` as individual GitHub secrets. See [Microsoft's guide](https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure-openid-connect).
+The workflows pass four separate GitHub secrets (`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`) into `azure/login@v3` by assembling them into a `creds` JSON string at runtime using expressions. This keeps each secret individually manageable while producing the format the action expects for service-principal login. No `id-token: write` permission is required.
 
 
 ### Contact Management

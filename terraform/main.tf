@@ -19,7 +19,7 @@ resource "azurerm_virtual_network" "appsec_vnet" {
   resource_group_name = azurerm_resource_group.appsec_exercise.name
 }
 
-# Subnet
+# Subnet for MongoDB VM
 resource "azurerm_subnet" "appsec_subnet" {
   name                 = "appsec-subnet"
   resource_group_name  = azurerm_resource_group.appsec_exercise.name
@@ -210,11 +210,13 @@ resource "null_resource" "mongo_wait_for_ready" {
 # (Removed - app now runs in AKS)
 
 # Azure Container Registry
+# Basic SKU with public access (acceptable for dev environment)
+# Standard SKU does not support public_network_access_enabled = false
 resource "azurerm_container_registry" "acr" {
   name                = "appsecacr${random_string.storage_suffix.result}"
   resource_group_name = azurerm_resource_group.appsec_exercise.name
   location            = azurerm_resource_group.appsec_exercise.location
-  sku                 = "Standard"  # Standard SKU allows public_network_access_enabled = false
+  sku                 = "Basic"  # Basic SKU supports public access
   admin_enabled       = true
 }
 
@@ -383,8 +385,7 @@ resource "random_string" "storage_suffix" {
 }
 
 # Storage Account for backups
-# Restricted to VNet with AzureServices bypass for GitHub Actions CI/CD access
-# Satisfies policy: "Storage accounts should restrict network access"
+# Public access for GitHub Actions CI/CD access (acceptable for dev environment)
 resource "azurerm_storage_account" "backup_storage" {
   name                     = "appsecbackup${random_string.storage_suffix.result}"
   resource_group_name      = azurerm_resource_group.appsec_exercise.name
@@ -393,26 +394,15 @@ resource "azurerm_storage_account" "backup_storage" {
   account_replication_type = "LRS"
   account_kind             = "StorageV2"
 
-  # Allow network restrictions but bypass for Azure services (needed for GitHub Actions)
-  public_network_access_enabled = false
+  public_network_access_enabled = true
   min_tls_version               = "TLS1_2"
-
-  network_rules {
-    default_action             = "Deny"
-    bypass                     = ["AzureServices"]  # Allows GitHub Actions runners via Azure infrastructure
-    virtual_network_subnet_ids = [
-      azurerm_subnet.appsec_subnet.id,  # Allow MongoDB VM to access backup storage
-      azurerm_subnet.aks_subnet.id      # Allow AKS to pull images from ACR
-    ]
-  }
 }
 
 # Blob container for MongoDB backups
-# Access restricted to VNet (storage account has network_rules with default_action=Deny)
 resource "azurerm_storage_container" "backup_container" {
   name                  = "mongo-backups"
   storage_account_id    = azurerm_storage_account.backup_storage.id
-  container_access_type = "private"  # Private: only accessible via VNet
+  container_access_type = "blob"  # Public blob access for backup storage
 }
 
 # Private container for Terraform state files

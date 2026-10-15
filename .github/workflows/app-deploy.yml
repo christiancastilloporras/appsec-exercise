@@ -44,43 +44,28 @@ jobs:
       with:
         terraform_version: ${{ env.TF_VERSION }}
 
-    - name: Azure Credentials Validation
+    - name: Validate Azure Separate Secrets
       run: |
-        echo "Validating AZURE_CREDENTIALS JSON key names..."
-        python3 << 'PYEOF'
-        import sys, json, os
-
-        creds_raw = os.environ.get("AZURE_CREDENTIALS", "")
-        if not creds_raw:
-            print("ERROR: AZURE_CREDENTIALS secret is not set or empty", file=sys.stderr)
-            sys.exit(1)
-
-        try:
-            data = json.loads(creds_raw)
-        except json.JSONDecodeError as e:
-            print(f"ERROR: AZURE_CREDENTIALS is not valid JSON: {e}", file=sys.stderr)
-            sys.exit(1)
-
-        required = {'clientId', 'clientSecret', 'tenantId', 'subscriptionId'}
-        keys = set(data.keys())
-        missing = required - keys
-
-        if missing:
-            print('ERROR: AZURE_CREDENTIALS is missing required keys:', missing, file=sys.stderr)
-            print('Found keys:', sorted(keys), file=sys.stderr)
-            print('azure/login expects camelCase keys: clientId, clientSecret, tenantId, subscriptionId', file=sys.stderr)
-            print('If your JSON has appId/password/tenant/subscription, remap the keys manually', file=sys.stderr)
-            sys.exit(1)
-
-        print('AZURE_CREDENTIALS validated: all required keys present')
-        PYEOF
+        for secret_name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_CLIENT_SECRET; do
+          if [ -z "${!secret_name}" ]; then
+            echo "ERROR: $secret_name secret is not set or empty" >&2
+            exit 1
+          fi
+        done
+        echo "All Azure login secrets validated"
       env:
-        AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+        AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
 
     - name: Azure Login
       uses: azure/login@v3
       with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
 
     - name: Authorize GitHub Actions Runner IP for AKS API
       run: |

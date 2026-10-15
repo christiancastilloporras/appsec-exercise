@@ -237,11 +237,16 @@ Uses **Cloudflare Origin CA Certificate** for TLS:
 
 If Origin CA secrets are absent, the app deploys with HTTP-only (no TLS).
 
+The workflows use `azure/login@v3` in **separated-credentials mode** — four independent GitHub secrets instead of a single JSON blob.
+
 ### Required GitHub Secrets
 
 | Secret | Purpose | Required |
 |---|---|---|
-| `AZURE_CREDENTIALS` | Azure service principal for Terraform deploy | Yes |
+| `AZURE_CLIENT_ID` | Azure service principal (appId / clientId) for Azure login | Yes |
+| `AZURE_TENANT_ID` | Azure Active Directory tenant ID | Yes |
+| `AZURE_SUBSCRIPTION_ID` | Azure subscription GUID | Yes |
+| `AZURE_CLIENT_SECRET` | Service principal password (client secret) | Yes |
 | `CLOUDFLARE_ZONE_ID` | Zone ID for `cloudguardian.xyz` | Yes |
 | `CLOUDFLARE_API_TOKEN` | API token with `Zone:DNS:Edit` permission | Yes |
 | `CF_ORIGIN_CA_CERT` | Origin CA certificate (PEM) | No (for HTTPS) |
@@ -257,38 +262,9 @@ If Origin CA secrets are absent, the app deploys with HTTP-only (no TLS).
 
 ### Azure Service Principal Setup
 
-The `AZURE_CREDENTIALS` secret must be a JSON object with the key names `clientId`, `clientSecret`, `tenantId`, `subscriptionId` — these are the exact key names `azure/login@v3` expects.
+Each workflow uses `azure/login@v3` in **separated-credentials mode** — four independent GitHub secrets instead of a single `AZURE_CREDENTIALS` JSON blob. This avoids JSON parsing errors and key-name mismatch failures.
 
-**Option 1: `az ad sp create-for-rpc --sdk-auth` (simplest, recommended)**
-
-In Azure Cloud Shell, run:
-
-```bash
-SUB_ID=$(az account show --query id -o tsv)
-az ad sp create-for-rpc --name "github-actions-sp" \
-  --role "Owner" \
-  --scopes /subscriptions/$SUB_ID \
-  --sdk-auth
-```
-
-The `--sdk-auth` flag outputs JSON with the correct camelCase key names:
-```json
-{
-  "clientId": "xxxx-xxxx-xxxx-xxxx",
-  "clientSecret": "your-client-secret",
-  "subscriptionId": "your-subscription-id",
-  "tenantId": "xxxx-xxxx-xxxx-xxxx",
-  "activeDirectoryEndpointUrl": "https://login.microsoftonline.com",
-  "resourceManagerEndpointUrl": "https://management.azure.com/",
-  ...
-}
-```
-
-> **Note:** `--sdk-auth` is deprecated in newer Azure CLI versions but still works. If `--sdk-auth` is unavailable, use Option 2 below.
-
-Copy the entire JSON output into the `AZURE_CREDENTIALS` GitHub secret.
-
-**Option 2: `az ad sp create-for-rpc` (without --sdk-auth, then remap manually)**
+**Generate the service principal and extract each value individually:**
 
 ```bash
 SUB_ID=$(az account show --query id -o tsv)
@@ -297,21 +273,29 @@ az ad sp create-for-rpc --name "github-actions-sp" \
   --scopes /subscriptions/$SUB_ID
 ```
 
-This outputs default keys (`appId`, `password`, `tenant`) — remap to:
+This outputs JSON like:
+
 ```json
 {
-  "clientId": "xxxx-xxxx-xxxx-xxxx",
-  "clientSecret": "your-client-secret",
-  "tenantId": "xxxx-xxxx-xxxx-xxxx",
-  "subscriptionId": "your-subscription-id"
+  "appId": "xxxx-xxxx-xxxx-xxxx",
+  "password": "your-client-secret",
+  "tenant": "xxxx-xxxx-xxxx-xxxx",
+  "name": "github-actions-sp"
 }
 ```
 
-If the JSON is missing any of these four keys, the GitHub Actions workflow will fail early with a clear validation error before attempting login.
+Create four GitHub secrets from the output, using **these exact names**:
 
-**Option 3: OIDC (recommended for production, no password rotation needed)**
+| Azure CLI output key | GitHub Secret name |
+|---|---|
+| `appId` | `AZURE_CLIENT_ID` |
+| `password` | `AZURE_CLIENT_SECRET` |
+| `tenant` | `AZURE_TENANT_ID` |
+| (from `az account show`) | `AZURE_SUBSCRIPTION_ID` |
 
-`azure/login@v3` supports passwordless OpenID Connect federation. This requires creating an OIDC federated credential in Azure AD and passing `client-id`, `tenant-id`, and `subscription-id` as individual GitHub secrets instead of a bundled `AZURE_CREDENTIALS` JSON. See [Microsoft's guide](https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure-openid-connect).
+**OIDC (recommended for production, no password rotation needed):**
+
+`azure/login@v3` supports passwordless OpenID Connect federation. Requires creating an OIDC federated credential in Azure AD and passing `client-id`, `tenant-id`, `subscription-id`, and `client-secret` as individual GitHub secrets. See [Microsoft's guide](https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure-openid-connect).
 
 
 ### Contact Management

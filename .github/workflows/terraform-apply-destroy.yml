@@ -110,38 +110,55 @@ jobs:
         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
 
-    - name: Terraform Init
+    - name: Write Terraform Variables File
       run: |
         cd terraform
-        # Generate HTTP backend auth config with Bearer token
-        cat > backend-config.json <<EOF
+        if [ -n "${{ inputs.aks_authorized_ips }}" ]; then
+          AKS_IPS=$(echo "${{ inputs.aks_authorized_ips }}" | sed 's/,/", "/g' | sed 's/^/["/' | sed 's/$/"]/')
+        else
+          AKS_IPS='["177.245.192.41/32"]'
+        fi
+        cat > github-actions.auto.tfvars <<EOF
+        location = "${{ github.event.inputs.location }}"
+        mongo_vm_size = "${{ github.event.inputs.mongo_vm_size }}"
+        aks_vm_size = "${{ github.event.inputs.aks_vm_size }}"
+        aks_authorized_ip_ranges = $AKS_IPS
+        EOF
+      env:
+        TFC_TEAM_TOKEN: ${{ secrets.TFC_TEAM_TOKEN }}
+        TFC_ORG_NAME: ${{ secrets.TFC_ORG_NAME }}
+
+    - name: Configure TFC Authentication
+      run: |
+        mkdir -p $HOME/.terraform.d
+        cat > $HOME/.terraform.d/credentials.tfrc.json <<EOF
         {
-          "headers": {
-            "Authorization": "Bearer ${TFC_TEAM_TOKEN}"
+          "credentials": {
+            "app.terraform.io": {
+              "token": "${TFC_TEAM_TOKEN}"
+            }
           }
         }
         EOF
-        terraform init -input=false -reconfigure \
-          -backend-config="config=backend-config.json"
       env:
         TFC_TEAM_TOKEN: ${{ secrets.TFC_TEAM_TOKEN }}
+
+    - name: Terraform Init
+      run: |
+        cd terraform
+        # The remote backend's organization can't use variables, so we pass it via -backend-config
+        # The TF_TOKEN_app_terraform_io env var or credentials.tfrc.json handles auth
+        terraform init -input=false -reconfigure \
+          -backend-config="organization=${TFC_ORG_NAME}"
+      env:
+        TFC_TEAM_TOKEN: ${{ secrets.TFC_TEAM_TOKEN }}
+        TFC_ORG_NAME: ${{ secrets.TFC_ORG_NAME }}
 
     - name: Terraform Apply
       if: github.event.inputs.action == 'apply'
       run: |
         cd terraform
-        if [ -n "${{ inputs.aks_authorized_ips }}" ]; then
-          AKS_IPS=$(echo "${{ inputs.aks_authorized_ips }}" | sed 's/,/", "/g' | sed 's/^/["/' | sed 's/$/"]')
-        else
-          AKS_IPS='["177.245.192.41/32"]'
-        fi
-        terraform apply -auto-approve \
-          -var="location=${{ github.event.inputs.location }}" \
-          -var="mongo_vm_size=${{ github.event.inputs.mongo_vm_size }}" \
-          -var="aks_vm_size=${{ github.event.inputs.aks_vm_size }}" \
-          -var="aks_authorized_ip_ranges=$AKS_IPS"
-      env:
-        TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TEAM_TOKEN }}
+        terraform apply -auto-approve
 
     - name: Save AKS Kubeconfig as Artifact
       if: always() && github.event.inputs.action == 'apply'
@@ -193,16 +210,7 @@ jobs:
       if: github.event.inputs.action == 'destroy'
       run: |
         cd terraform
-        if [ -n "${{ inputs.aks_authorized_ips }}" ]; then
-          AKS_IPS=$(echo "${{ inputs.aks_authorized_ips }}" | sed 's/,/", "/g' | sed 's/^/["/' | sed 's/$/"]')
-        else
-          AKS_IPS='["177.245.192.41/32"]'
-        fi
-        echo "No local state file needed - state is remote in TFC"
-        terraform destroy -auto-approve \
-          -var="location=${{ github.event.inputs.location }}" \
-          -var="mongo_vm_size=${{ github.event.inputs.mongo_vm_size }}" \
-          -var="aks_vm_size=${{ github.event.inputs.aks_vm_size }}" \
-          -var="aks_authorized_ip_ranges=$AKS_IPS"
+        terraform destroy -auto-approve
       env:
-        TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TEAM_TOKEN }}
+        TFC_TEAM_TOKEN: ${{ secrets.TFC_TEAM_TOKEN }}
+        TFC_ORG_NAME: ${{ secrets.TFC_ORG_NAME }}

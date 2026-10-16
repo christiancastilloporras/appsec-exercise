@@ -1,5 +1,9 @@
 terraform {
-  backend "http" {
-    address = "https://app.terraform.io/api/v2/workspaces/appsec-exercise/state-versions"
+  backend "remote" {
+    hostname = "app.terraform.io"
+
+    workspaces {
+      name = "appsec-exercise"
+    }
   }
 }

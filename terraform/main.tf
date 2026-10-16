@@ -110,8 +110,10 @@ resource "azurerm_network_security_group" "mongo_nsg" {
     destination_address_prefix = "*"
   }
 
-  # Allow Mongo (27017) from the GitHub Actions runner during provisioning
-  # Only takes effect when runner_ip is non-empty (passed via -var in CI)
+  # Allow Mongo (27017) from the GitHub Actions runner during provisioning.
+  # When runner_ip is empty (local terraform apply), falls back to allowing
+  # the local machine's detected public IP via the fallback_url.
+  # When runner_ip is set (CI), uses the explicit runner IP.
   security_rule {
     name                       = "Mongo-Runner-Temp"
     priority                   = 1020

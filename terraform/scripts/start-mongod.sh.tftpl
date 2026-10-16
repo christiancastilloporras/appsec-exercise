@@ -12,9 +12,9 @@ apt-get install -y curl procps iproute2
 
 # Download MongoDB ${mongo_version} (ubuntu2204 build for Ubuntu 22.04 Jammy compatibility)
 MONGO_TARBALL="mongodb-linux-x86_64-ubuntu2204-${mongo_version}.tgz"
-MONGO_URL="https://fastdl.mongodb.org/linux/${MONGO_TARBALL}"
+MONGO_URL="https://fastdl.mongodb.org/linux/$${MONGO_TARBALL}"
 
-echo "Downloading MongoDB ${mongo_version} from $MONGO_URL..."
+echo "Downloading MongoDB ${mongo_version} from $$MONGO_URL..."
 # Download with retries - this is the most likely failure point
 DOWNLOAD_OK=false
 for attempt in $(seq 1 5); do
@@ -47,7 +47,7 @@ tar -xzf /tmp/mongodb.tgz -C /tmp/mongodb-extract
 
 # Copy binaries to /usr/local/bin
 MONGO_DIR=$(ls -d /tmp/mongodb-extract/mongodb-linux-x86_64-ubuntu2204-${mongo_version})
-cp -r "${MONGO_DIR}/bin/"* /usr/local/bin/
+cp -r "$${MONGO_DIR}/bin/"* /usr/local/bin/
 
 # Verify mongod binary works
 echo "Verifying mongod binary..."

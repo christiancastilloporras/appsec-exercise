@@ -24,7 +24,7 @@ on:
         required: false
         default: 'Standard_D2s_v6'
       aks_authorized_ips:
-        description: 'Comma-separated list of IPs/CIDRs to authorize on AKS API server (e.g., 123.45.67.89/32)'
+        description: 'Comma-separated list of IPs/CIDs to authorize on AKS API server (e.g., 123.45.67.89/32)'
         required: false
         default: ''
 
@@ -113,17 +113,25 @@ jobs:
     - name: Terraform Init
       run: |
         cd terraform
+        # Generate HTTP backend auth config with Bearer token
+        cat > backend-config.json <<EOF
+        {
+          "headers": {
+            "Authorization": "Bearer ${TFC_TEAM_TOKEN}"
+          }
+        }
+        EOF
         terraform init -input=false -reconfigure \
-          -backend-config="organization=${{ secrets.TFC_ORG_NAME }}"
+          -backend-config="config=backend-config.json"
       env:
-        TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TEAM_TOKEN }}
+        TFC_TEAM_TOKEN: ${{ secrets.TFC_TEAM_TOKEN }}
 
     - name: Terraform Apply
       if: github.event.inputs.action == 'apply'
       run: |
         cd terraform
         if [ -n "${{ inputs.aks_authorized_ips }}" ]; then
-          AKS_IPS=$(echo "${{ inputs.aks_authorized_ips }}" | sed 's/,/", "/g' | sed 's/^/["/' | sed 's/$/"]/')
+          AKS_IPS=$(echo "${{ inputs.aks_authorized_ips }}" | sed 's/,/", "/g' | sed 's/^/["/' | sed 's/$/"]')
         else
           AKS_IPS='["177.245.192.41/32"]'
         fi
@@ -186,7 +194,7 @@ jobs:
       run: |
         cd terraform
         if [ -n "${{ inputs.aks_authorized_ips }}" ]; then
-          AKS_IPS=$(echo "${{ inputs.aks_authorized_ips }}" | sed 's/,/", "/g' | sed 's/^/["/' | sed 's/$/"]/')
+          AKS_IPS=$(echo "${{ inputs.aks_authorized_ips }}" | sed 's/,/", "/g' | sed 's/^/["/' | sed 's/$/"]')
         else
           AKS_IPS='["177.245.192.41/32"]'
         fi

@@ -34,6 +34,7 @@ permissions:
 env:
   RESOURCE_GROUP: appsec-exercise-rg
   TF_VERSION: 1.7.5
+  TFC_WORKSPACE: "appsec-exercise"
 
 jobs:
   terraform:
@@ -46,7 +47,6 @@ jobs:
       uses: hashicorp/setup-terraform@v4
       with:
         terraform_version: ${{ env.TF_VERSION }}
-        cli_config_credentials_token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Validate Secrets
       run: |
@@ -102,7 +102,6 @@ jobs:
             sleep 10
           fi
         done
-        echo "RBAC grant step completed"
       continue-on-error: true
       env:
         AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -110,55 +109,83 @@ jobs:
         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
 
-    - name: Write Terraform Variables File
+    - name: Sync State FROM Terraform Cloud
       run: |
         cd terraform
-        if [ -n "${{ inputs.aks_authorized_ips }}" ]; then
-          AKS_IPS=$(echo "${{ inputs.aks_authorized_ips }}" | sed 's/,/", "/g' | sed 's/^/["/' | sed 's/$/"]/')
+        echo "Pulling current state from TFC..."
+        # 1. Get current state version
+        STATE_JSON=$(curl -s -H "Authorization: Bearer ${TFC_TOKEN}" \
+          "https://app.terraform.io/api/v2/organizations/${TFC_ORG}/workspaces/${TFC_WORKSPACE}/current-state-version")
+        
+        DOWNLOAD_URL=$(echo $STATE_JSON | jq -r '.data.attributes."hosted-state-download-url"')
+        
+        if [ "$DOWNLOAD_URL" != "null" ] && [ -n "$DOWNLOAD_URL" ]; then
+          echo "Downloading state from $DOWNLOAD_URL"
+          curl -s -H "Authorization: Bearer ${TFC_TOKEN}" -L "$DOWNLOAD_URL" -o terraform.tfstate
+          echo "State pulled successfully."
         else
-          AKS_IPS='["177.245.192.41/32"]'
+          echo "No state found in TFC (new workspace or empty state). Starting fresh."
+          touch terraform.tfstate
         fi
-        cat > github-actions.auto.tfvars <<EOF
-        location = "${{ github.event.inputs.location }}"
-        mongo_vm_size = "${{ github.event.inputs.mongo_vm_size }}"
-        aks_vm_size = "${{ github.event.inputs.aks_vm_size }}"
-        aks_authorized_ip_ranges = $AKS_IPS
-        EOF
       env:
-        TFC_TEAM_TOKEN: ${{ secrets.TFC_TEAM_TOKEN }}
-        TFC_ORG_NAME: ${{ secrets.TFC_ORG_NAME }}
-
-    - name: Configure TFC Authentication
-      run: |
-        mkdir -p $HOME/.terraform.d
-        cat > $HOME/.terraform.d/credentials.tfrc.json <<EOF
-        {
-          "credentials": {
-            "app.terraform.io": {
-              "token": "${TFC_TEAM_TOKEN}"
-            }
-          }
-        }
-        EOF
-      env:
-        TFC_TEAM_TOKEN: ${{ secrets.TFC_TEAM_TOKEN }}
+        TFC_TOKEN: ${{ secrets.TFC_TEAM_TOKEN }}
+        TFC_ORG: ${{ secrets.TFC_ORG_NAME }}
 
     - name: Terraform Init
       run: |
         cd terraform
-        # The remote backend's organization can't use variables, so we pass it via -backend-config
-        # The TF_TOKEN_app_terraform_io env var or credentials.tfrc.json handles auth
-        terraform init -input=false -reconfigure \
-          -backend-config="organization=${TFC_ORG_NAME}"
-      env:
-        TFC_TEAM_TOKEN: ${{ secrets.TFC_TEAM_TOKEN }}
-        TFC_ORG_NAME: ${{ secrets.TFC_ORG_NAME }}
+        terraform init -input=false
 
     - name: Terraform Apply
       if: github.event.inputs.action == 'apply'
       run: |
         cd terraform
-        terraform apply -auto-approve
+        if [ -n "${{ inputs.aks_authorized_ips }}" ]; then
+          IPS=$(echo "${{ inputs.aks_authorized_ips }}" | sed 's/,/" , "/g' | sed 's/^/["/' | sed 's/$/"]/')
+        else
+          IPS='["177.245.192.41/32"]'
+        fi
+        terraform apply -auto-approve \
+          -var="location=${{ github.event.inputs.location }}" \
+          -var="mongo_vm_size=${{ github.event.inputs.mongo_vm_size }}" \
+          -var="aks_vm_size=${{ github.event.inputs.aks_vm_size }}" \
+          -var="aks_authorized_ip_ranges=$IPS"
+
+    - name: Terraform Destroy
+      if: github.event.inputs.action == 'destroy'
+      run: |
+        cd terraform
+        terraform destroy -auto-approve \
+          -var="location=${{ github.event.inputs.location }}" \
+          -var="mongo_vm_size=${{ github.event.inputs.mongo_vm_size }}" \
+          -var="aks_vm_size=${{ github.event.inputs.aks_vm_size }}"
+
+    - name: Sync State TO Terraform Cloud
+      if: always()
+      run: |
+        cd terraform
+        echo "Pushing updated state to TFC..."
+        # 1. Request an upload URL
+        UPLOAD_JSON=$(curl -s -X POST -H "Authorization: Bearer ${TFC_TOKEN}" \
+          -H "Content-Type: application/vnd.api+json" \
+          -d '{"data":{"type":"state-versions","attributes":{"uploaded_at":"'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"}}}' \
+          "https://app.terraform.io/api/v2/organizations/${TFC_ORG}/workspaces/${TFC_WORKSPACE}/state-versions")
+        
+        UPLOAD_URL=$(echo $UPLOAD_JSON | jq -r '.data.attributes."hosted-state-upload-url"')
+        
+        if [ "$UPLOAD_URL" != "null" ] && [ -n "$UPLOAD_URL" ]; then
+          echo "Uploading state to $UPLOAD_URL"
+          curl -s -X PUT -H "Content-Type: application/octet-stream" \
+            -H "Authorization: Bearer ${TFC_TOKEN}" \
+            --data-binary @terraform.tfstate "$UPLOAD_URL"
+          echo "State pushed successfully."
+        else
+          echo "ERROR: Could not obtain upload URL from TFC API. State not saved!"
+          exit 1
+        fi
+      env:
+        TFC_TOKEN: ${{ secrets.TFC_TEAM_TOKEN }}
+        TFC_ORG: ${{ secrets.TFC_ORG_NAME }}
 
     - name: Save AKS Kubeconfig as Artifact
       if: always() && github.event.inputs.action == 'apply'
@@ -174,8 +201,6 @@ jobs:
           --overwrite-existing 2>/dev/null || \
         terraform output -raw aks_kube_config > $RUNNER_TEMP/aks-artifact/kubeconfig 2>/dev/null || \
         echo "Could not retrieve kubeconfig"
-        ls -la $RUNNER_TEMP/aks-artifact/
-        echo "Kubeconfig saved to artifact"
       env:
         RESOURCE_GROUP: ${{ env.RESOURCE_GROUP }}
 
@@ -191,26 +216,13 @@ jobs:
     - name: Cleanup Mongo NSG Temp Rule
       if: always() && github.event.inputs.action == 'apply'
       run: |
-        echo "Cleanup: Removing temporary Mongo NSG rule (0.0.0.0/0) to ensure security..."
+        echo "Cleanup: Removing temporary Mongo NSG rule (0.0.0.0/0)..."
         MONGO_NSG=$(az network nsg list --resource-group "$RESOURCE_GROUP" --query "[?contains(name, 'mongo-nsg')].name | [0]" -o tsv 2>/dev/null)
         if [ -n "$MONGO_NSG" ]; then
-          echo "Found Mongo NSG: $MONGO_NSG. Deleting rule 'Mongo-Runner-Temp'..."
-          az network nsg rule delete --resource-group "$RESOURCE_GROUP" --nsg-name "$MONGO_NSG" --name "Mongo-Runner-Temp" 2>/dev/null || echo "Rule 'Mongo-Runner-Temp' already removed or not found."
-          echo "Cleanup completed. Only Mongo-AKS-Only rule remains (AKS subnet CIDR)."
-        else
-          echo "Could not find Mongo NSG. Skipping rule deletion."
+          az network nsg rule delete --resource-group "$RESOURCE_GROUP" --nsg-name "$MONGO_NSG" --name "Mongo-Runner-Temp" 2>/dev/null || echo "Rule not found."
         fi
       env:
         AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
         AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-
-    - name: Terraform Destroy
-      if: github.event.inputs.action == 'destroy'
-      run: |
-        cd terraform
-        terraform destroy -auto-approve
-      env:
-        TFC_TEAM_TOKEN: ${{ secrets.TFC_TEAM_TOKEN }}
-        TFC_ORG_NAME: ${{ secrets.TFC_ORG_NAME }}

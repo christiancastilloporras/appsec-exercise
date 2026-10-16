@@ -1,8 +1,7 @@
 terraform {
   backend "remote" {
     hostname     = "app.terraform.io"
-    organization = "your-tfc-org-name"
-
+    organization = var.tfc_organization
     workspaces {
       name = "appsec-exercise"
     }

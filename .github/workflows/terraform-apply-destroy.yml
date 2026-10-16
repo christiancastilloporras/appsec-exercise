@@ -48,20 +48,22 @@ jobs:
         terraform_version: ${{ env.TF_VERSION }}
         cli_config_credentials_token: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Validate Azure Separate Secrets
+    - name: Validate Secrets
       run: |
-        for secret_name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_CLIENT_SECRET; do
+        for secret_name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_CLIENT_SECRET TFC_TEAM_TOKEN TFC_ORG_NAME; do
           if [ -z "${!secret_name}" ]; then
             echo "ERROR: $secret_name secret is not set or empty" >&2
             exit 1
           fi
         done
-        echo "All Azure login secrets validated"
+        echo "All secrets validated (Azure + TFC)"
       env:
         AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
         AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        TFC_TEAM_TOKEN: ${{ secrets.TFC_TEAM_TOKEN }}
+        TFC_ORG_NAME: ${{ secrets.TFC_ORG_NAME }}
 
     - name: Build creds JSON from separated secrets
       id: build_creds
@@ -81,6 +83,7 @@ jobs:
         creds: ${{ steps.build_creds.outputs.creds_json }}
 
     - name: Grant RBAC Permission for Role Assignment
+      if: github.event.inputs.action == 'apply'
       run: |
         SUB_ID=$(az account show --query "id" -o tsv)
         CLIENT_ID=$(az account show --query "user.name" -o tsv)
@@ -101,11 +104,17 @@ jobs:
         done
         echo "RBAC grant step completed"
       continue-on-error: true
+      env:
+        AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
 
     - name: Terraform Init
       run: |
         cd terraform
-        terraform init -input=false
+        terraform init -input=false -reconfigure \
+          -var="tfc_organization=${{ secrets.TFC_ORG_NAME }}"
       env:
         TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TEAM_TOKEN }}
 
@@ -166,15 +175,27 @@ jobs:
         else
           echo "Could not find Mongo NSG. Skipping rule deletion."
         fi
+      env:
+        AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
 
     - name: Terraform Destroy
       if: github.event.inputs.action == 'destroy'
       run: |
         cd terraform
+        if [ -n "${{ inputs.aks_authorized_ips }}" ]; then
+          AKS_IPS=$(echo "${{ inputs.aks_authorized_ips }}" | sed 's/,/", "/g' | sed 's/^/["/' | sed 's/$/"]/')
+        else
+          AKS_IPS='["177.245.192.41/32"]'
+        fi
         echo "No local state file needed - state is remote in TFC"
         terraform destroy -auto-approve \
           -var="location=${{ github.event.inputs.location }}" \
           -var="mongo_vm_size=${{ github.event.inputs.mongo_vm_size }}" \
-          -var="aks_vm_size=${{ github.event.inputs.aks_vm_size }}"
+          -var="aks_vm_size=${{ github.event.inputs.aks_vm_size }}" \
+          -var="aks_authorized_ip_ranges=$AKS_IPS" \
+          -var="tfc_organization=${{ secrets.TFC_ORG_NAME }}"
       env:
         TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TEAM_TOKEN }}

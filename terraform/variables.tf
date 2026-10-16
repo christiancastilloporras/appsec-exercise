@@ -45,6 +45,11 @@ variable "runner_ip" {
   default     = ""
 }
 
+variable "tfc_organization" {
+  description = "TFC organization name for remote backend"
+  default     = ""
+}
+
 variable "cloudflare_ip_ranges" {
   type        = list(string)
   description = "Cloudflare IPv4 ranges for NSG rules. See https://www.cloudflare.com/ips-v4/ for current values. Note: Azure NSG rules cannot mix IPv4 and IPv6 in the same rule, so only IPv4 ranges are included here. Use separate rules for IPv6 if needed."

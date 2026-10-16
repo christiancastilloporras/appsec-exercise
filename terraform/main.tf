@@ -184,10 +184,17 @@ resource "null_resource" "mongo_wait_for_ready" {
       # Wait for cloud-init to complete (mongod startup is via cloud-init)
       "echo 'Waiting for cloud-init to complete...'",
       "cloud-init status --wait 2>/dev/null || echo 'cloud-init status not available, continuing'",
-      # Wait for MongoDB to listen on private IP (the actual address AKS uses)
+      # Wait for MongoDB to listen on port 27017
+      # Use the PUBLIC IP since the GitHub Actions runner is outside the Azure VNet.
+      # The MongoDB NSG only allows 27017 from the AKS subnet, so we temporarily
+      # add the runner's IP to the NSG rule during the wait phase.
+      "RUNNER_IP=$(curl -s https://api.ipify.org)",
+      # Add temporary NSG rule for runner → 27017
+      "az network nsg rule create --resource-group appsec-exercise-rg --nsg-name mongo-nsg --name mongo_runner_wait --priority 1055 --direction Inbound --access Allow --protocol Tcp --source-address-prefix \"${RUNNER_IP}/32\" --source-port-ranges '*' --destination-address-prefixes '*' --destination-port-ranges 27017 --description 'Temporary wait-for-ready access' 2>/dev/null || true",
+      "sleep 10",
       "for i in $(seq 1 60); do",
-      "  if bash -c 'echo > /dev/tcp/${azurerm_network_interface.mongo_nic.private_ip_address}/27017' 2>/dev/null; then",
-      "    echo '✅ MongoDB is reachable on private IP ${azurerm_network_interface.mongo_nic.private_ip_address}:27017'",
+      "  if bash -c 'echo > /dev/tcp/${azurerm_public_ip.mongo_pip.ip_address}/27017' 2>/dev/null; then",
+      "    echo '✅ MongoDB is reachable on public IP ${azurerm_public_ip.mongo_pip.ip_address}:27017'",
       "    exit 0",
       "  else",
       "    echo \"⏳ MongoDB not ready yet (attempt $i/60)...\"",
@@ -210,22 +217,14 @@ resource "null_resource" "mongo_wait_for_ready" {
 # (Removed - app now runs in AKS)
 
 # Azure Container Registry
-# Basic SKU — publicly accessible by default using network_rule_set (provider v4+)
-# Note: Top-level public_network_access_enabled is deprecated in azurerm v4.
-# An empty network_rule_set block defaults to default_action="Allow".
+# Basic SKU is publicly accessible by default. In azurerm provider v4,
+# network_rule_set is only supported on Premium SKU, so we omit it entirely.
 resource "azurerm_container_registry" "acr" {
   name                = "appsecacr${random_string.storage_suffix.result}"
   resource_group_name = azurerm_resource_group.appsec_exercise.name
   location            = azurerm_resource_group.appsec_exercise.location
   sku                 = "Basic"
   admin_enabled       = true
-
-  network_rule_set {
-    # Empty block: public access allowed, no IP restrictions
-    # Required because Azure Policy blocks public_network_access_enabled=true
-    # on storage accounts, but ACR Basic SKU does not support disabling
-    # public network access either. Empty network_rule_set = allow all.
-  }
 }
 
 # Subnet for AKS nodes

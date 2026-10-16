@@ -181,27 +181,21 @@ resource "null_resource" "mongo_wait_for_ready" {
 
   provisioner "remote-exec" {
     inline = [
-      # Wait for cloud-init to complete (mongod startup is via cloud-init)
       "echo 'Waiting for cloud-init to complete...'",
       "cloud-init status --wait 2>/dev/null || echo 'cloud-init status not available, continuing'",
-      # Wait for MongoDB to listen on port 27017
-      # Use the PUBLIC IP since the GitHub Actions runner is outside the Azure VNet.
-      # The MongoDB NSG only allows 27017 from the AKS subnet, so we temporarily
-      # add the runner's IP to the NSG rule during the wait phase.
       "RUNNER_IP=$(curl -s https://api.ipify.org)",
-      # Add temporary NSG rule for runner → 27017
-      "az network nsg rule create --resource-group appsec-exercise-rg --nsg-name mongo-nsg --name mongo_runner_wait --priority 1055 --direction Inbound --access Allow --protocol Tcp --source-address-prefix \"${RUNNER_IP}/32\" --source-port-ranges '*' --destination-address-prefixes '*' --destination-port-ranges 27017 --description 'Temporary wait-for-ready access' 2>/dev/null || true",
+      "az network nsg rule create --resource-group appsec-exercise-rg --nsg-name mongo-nsg --name mongo_runner_wait --priority 1055 --direction Inbound --access Allow --protocol Tcp --source-address-prefix $${RUNNER_IP}/32 --source-port-ranges '*' --destination-address-prefixes '*' --destination-port-ranges 27017 --description 'Temporary wait-for-ready access' 2>/dev/null || true",
       "sleep 10",
-      "for i in $(seq 1 60); do",
-      "  if bash -c 'echo > /dev/tcp/${azurerm_public_ip.mongo_pip.ip_address}/27017' 2>/dev/null; then",
-      "    echo '✅ MongoDB is reachable on public IP ${azurerm_public_ip.mongo_pip.ip_address}:27017'",
+      "for i in $$(seq 1 60); do",
+      "  if bash -c 'echo > /dev/tcp/$${MONGO_PUBLIC_IP:-${azurerm_public_ip.mongo_pip.ip_address}}/27017' 2>/dev/null; then",
+      "    echo 'MongoDB is reachable on port 27017'",
       "    exit 0",
       "  else",
-      "    echo \"⏳ MongoDB not ready yet (attempt $i/60)...\"",
+      "    echo \"MongoDB not ready yet (attempt $$i/60)...\"",
       "    sleep 10",
       "  fi",
       "done",
-      "echo '❌ MongoDB did not become reachable on port 27017 within 600s'",
+      "echo 'MongoDB did not become reachable on port 27017 within 600s'",
       "echo '=== mongod.out ==='",
       "cat /home/${var.vm_admin_username}/logs/mongod.out 2>/dev/null || true",
       "echo '=== mongod.log ==='",

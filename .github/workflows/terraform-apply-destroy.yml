@@ -247,18 +247,31 @@ jobs:
             --account-name "$TFSTATE_STORAGE_ACCOUNT" \
             --resource-group "$RESOURCE_GROUP" \
             --ip "$RUNNER_IP" 2>/dev/null || echo "Network rule may already exist"
-          # Wait for rule to propagate
-          sleep 5
+          # Wait for network rule propagation (Azure can take up to 30s)
+          echo "Waiting for network rule propagation (15s)..."
+          sleep 15
         fi
 
-        az storage blob upload \
+        # Upload the TF state file with retry logic for network rule propagation
+        if ! az storage blob upload \
           --account-name "$TFSTATE_STORAGE_ACCOUNT" \
           --account-key "$TFSTATE_STORAGE_KEY" \
           --container-name "${TFSTATE_CONTAINER}" \
           --name "terraform.tfstate" \
           --file "$STATE_FILE" \
           --auth-mode key \
-          --overwrite
+          --overwrite 2>&1; then
+          echo "Upload failed, waiting for propagation and retrying (15s)..."
+          sleep 15
+          az storage blob upload \
+            --account-name "$TFSTATE_STORAGE_ACCOUNT" \
+            --account-key "$TFSTATE_STORAGE_KEY" \
+            --container-name "${TFSTATE_CONTAINER}" \
+            --name "terraform.tfstate" \
+            --file "$STATE_FILE" \
+            --auth-mode key \
+            --overwrite
+        fi
 
         echo "TF state uploaded to Azure Blob Storage successfully"
 

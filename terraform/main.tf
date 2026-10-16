@@ -164,7 +164,11 @@ resource "azurerm_linux_virtual_machine" "mongo_vm" {
 # The startup script downloads, extracts, and starts MongoDB as a daemon
 # This ensures MongoDB survives VM reboots and is properly daemonized
 
-# Wait for cloud-init to finish and MongoDB to be ready on private IP
+# Wait for cloud-init to finish and MongoDB to be ready on port 27017
+# We use a two-step approach: the 'file' provisioner uploads the rendered
+# bash script to the VM, then 'remote-exec' executes it with /bin/bash.
+# This avoids sh syntax issues (remote-exec inline defaults to sh on Ubuntu)
+# by explicitly using bash to run the script.
 resource "null_resource" "mongo_wait_for_ready" {
   depends_on = [
     azurerm_linux_virtual_machine.mongo_vm,
@@ -179,30 +183,19 @@ resource "null_resource" "mongo_wait_for_ready" {
     timeout  = "15m"
   }
 
+  # Upload the wait-for-mongo.sh script with template variables rendered
+  provisioner "file" {
+    source      = "${path.module}/scripts/wait-for-mongo.sh"
+    destination = "/tmp/wait-for-mongo.sh"
+  }
+
+  # Replace placeholders with Terraform-resolved values and execute with bash
   provisioner "remote-exec" {
     inline = [
-      "echo 'Waiting for cloud-init to complete...'",
-      "cloud-init status --wait 2>/dev/null || echo 'cloud-init status not available, continuing'",
-      "RUNNER_IP=$(curl -s https://api.ipify.org)",
-      "az network nsg rule create --resource-group appsec-exercise-rg --nsg-name mongo-nsg --name mongo_runner_wait --priority 1055 --direction Inbound --access Allow --protocol Tcp --source-address-prefix $${RUNNER_IP}/32 --source-port-ranges '*' --destination-address-prefixes '*' --destination-port-ranges 27017 --description 'Temporary wait-for-ready access' 2>/dev/null || true",
-      "sleep 10",
-      "for i in $$(seq 1 60); do",
-      "  if bash -c 'echo > /dev/tcp/$${MONGO_PUBLIC_IP:-${azurerm_public_ip.mongo_pip.ip_address}}/27017' 2>/dev/null; then",
-      "    echo 'MongoDB is reachable on port 27017'",
-      "    exit 0",
-      "  else",
-      "    echo \"MongoDB not ready yet (attempt $$i/60)...\"",
-      "    sleep 10",
-      "  fi",
-      "done",
-      "echo 'MongoDB did not become reachable on port 27017 within 600s'",
-      "echo '=== mongod.out ==='",
-      "cat /home/${var.vm_admin_username}/logs/mongod.out 2>/dev/null || true",
-      "echo '=== mongod.log ==='",
-      "cat /var/log/mongodb/mongod.log 2>/dev/null || true",
-      "echo '=== processes ==='",
-      "ps aux | grep mongod || true",
-      "exit 1"
+      "sed -i 's/__MONGO_PUBLIC_IP__/${azurerm_public_ip.mongo_pip.ip_address}/g' /tmp/wait-for-mongo.sh",
+      "sed -i 's/__VM_ADMIN_USERNAME__/${var.vm_admin_username}/g' /tmp/wait-for-mongo.sh",
+      "chmod +x /tmp/wait-for-mongo.sh",
+      "/bin/bash /tmp/wait-for-mongo.sh"
     ]
   }
 }
@@ -211,14 +204,22 @@ resource "null_resource" "mongo_wait_for_ready" {
 # (Removed - app now runs in AKS)
 
 # Azure Container Registry
-# Basic SKU is publicly accessible by default. In azurerm provider v4,
-# network_rule_set is only supported on Premium SKU, so we omit it entirely.
+# Premium SKU is required because Azure Policy enforces
+# public_network_access_enabled = false, which is not supported on Basic
+# SKU. Premium SKU supports both public_network_access_enabled = false
+# and network_rule_set for additional security.
 resource "azurerm_container_registry" "acr" {
   name                = "appsecacr${random_string.storage_suffix.result}"
   resource_group_name = azurerm_resource_group.appsec_exercise.name
   location            = azurerm_resource_group.appsec_exercise.location
-  sku                 = "Basic"
+  sku                 = "Premium"
   admin_enabled       = true
+
+  network_rule_set {
+    default_action = "Allow"
+    # Could restrict to VNet/AKS subnet here, but keeping Allow for simplicity
+    # since the exercise focuses on MongoDB backup exposure
+  }
 }
 
 # Subnet for AKS nodes
@@ -403,19 +404,13 @@ resource "azurerm_storage_account" "backup_storage" {
   public_network_access_enabled = false
   min_tls_version               = "TLS1_2"
 
-  # GitHub Actions runners need network access to upload/download
-  # backups and TF state. Include GitHub's outbound IP ranges.
+  # Network rules: deny by default, allow Azure services, and allow
+  # GitHub Actions runner IPs dynamically during TF state upload/download.
+  # The ip_rules are managed dynamically via az CLI in the workflow/scripts
+  # since GitHub runner IPs are not static and change frequently.
   network_rules {
     default_action = "Deny"
     bypass         = ["AzureServices"]
-    ip_rules = [
-      "140.82.112.0/20",
-      "185.199.156.0/22",
-      "192.30.252.0/22",
-      "185.199.158.0/23",
-      "140.82.116.0/22",
-      "143.55.64.0/20",
-    ]
   }
 }
 

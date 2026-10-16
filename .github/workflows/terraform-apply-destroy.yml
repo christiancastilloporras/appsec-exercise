@@ -91,10 +91,33 @@ jobs:
         CLIENT_ID=$(az account show --query "user.name" -o tsv)
         SPN_OBJ_ID=$(az ad sp show --id "$CLIENT_ID" --query "objectId" -o tsv 2>/dev/null || echo "")
         echo "Granting User Access Administrator to SPN (objectId: $SPN_OBJ_ID) at subscription level"
-        az role assignment create --assignee "$SPN_OBJ_ID" --role "User Access Administrator" --scope /subscriptions/$SUB_ID 2>/dev/null || \
-        az role assignment create --assignee "$SPN_OBJ_ID" --role "Owner" --scope /subscriptions/$SUB_ID 2>/dev/null || \
-        echo "RBAC grant attempted - may already have permission"
+        # Retry the role assignment in case of eventual consistency
+        for attempt in $(seq 1 3); do
+          echo "RBAC grant attempt $attempt/3..."
+          if az role assignment create --assignee "$SPN_OBJ_ID" --role "User Access Administrator" --scope /subscriptions/$SUB_ID 2>/dev/null; then
+            echo "RBAC grant succeeded on attempt $attempt"
+            break
+          elif az role assignment create --assignee "$SPN_OBJ_ID" --role "Owner" --scope /subscriptions/$SUB_ID 2>/dev/null; then
+            echo "RBAC grant succeeded with Owner role on attempt $attempt"
+            break
+          else
+            echo "RBAC grant attempt $attempt failed, retrying in 10s..."
+            sleep 10
+          fi
+        done
+        echo "RBAC grant step completed"
       continue-on-error: true
+
+    - name: Resolve Runner IP
+      id: runner_ip
+      run: |
+        RUNNER_IP=$(curl -s https://api.ipify.org)
+        if [ -z "$RUNNER_IP" ]; then
+          echo "ERROR: Could not determine runner public IP"
+          exit 1
+        fi
+        echo "Runner IP: $RUNNER_IP"
+        echo "runner_ip=$RUNNER_IP" >> "$GITHUB_OUTPUT"
 
     - name: Download Terraform State (if exists)
       continue-on-error: true
@@ -116,6 +139,27 @@ jobs:
           echo "No state file downloaded - will use Azure CLI cleanup as fallback"
         fi
 
+    - name: Pre-add Runner IP to Storage Network Rules
+      if: github.event.inputs.action == 'apply'
+      run: |
+        # Pre-add the runner IP to ALL storage accounts in the resource group
+        # so that TF state upload can work even if terraform apply fails partially.
+        # This must happen BEFORE terraform apply so the state can be saved.
+        RUNNER_IP="${{ steps.runner_ip.outputs.runner_ip }}"
+        echo "Pre-adding runner IP $RUNNER_IP to storage network rules..."
+        for sa in $(az storage account list \
+          --resource-group "$RESOURCE_GROUP" \
+          --query "[].name" -o tsv 2>/dev/null); do
+          echo "Adding runner IP to storage account: $sa"
+          az storage account network-rule add \
+            --account-name "$sa" \
+            --resource-group "$RESOURCE_GROUP" \
+            --ip "$RUNNER_IP" 2>/dev/null || echo "Rule may already exist or storage account not found"
+        done
+        # Wait for network rule propagation (Azure can take up to 30s)
+        echo "Waiting for network rule propagation (30s)..."
+        sleep 30
+
     - name: Terraform Init
       run: |
         cd terraform
@@ -125,17 +169,9 @@ jobs:
       if: github.event.inputs.action == 'apply'
       run: |
         cd terraform
-        # Resolve the GitHub Actions runner public IP and pass to Terraform
-        # so mongo_nsg opens port 27017 for this runner during provisioning.
-        RUNNER_IP=$(curl -s https://api.ipify.org)
-        if [ -z "$RUNNER_IP" ]; then
-          echo "ERROR: Could not determine runner public IP"
-          exit 1
-        fi
-        echo "Runner IP: $RUNNER_IP"
         # Convert comma-separated AKS authorized IPs to Terraform list format
         if [ -n "${{ inputs.aks_authorized_ips }}" ]; then
-          AKS_IPS=$(echo "${{ inputs.aks_authorized_ips }}" | sed 's/,/", "/g' | sed 's/^/["/' | sed 's/$/"]/')
+          AKS_IPS=$(echo "${{ inputs.aks_authorized_ips }}" | sed 's/,/", "/g' | sed 's/^/["/' | sed 's/$/"]/')"
         else
           # Fall back to default from variables.tf (must include at least one IP to enable feature)
           AKS_IPS='["177.245.192.41/32"]'
@@ -145,8 +181,7 @@ jobs:
           -var="mongo_vm_size=${{ github.event.inputs.mongo_vm_size }}" \
           -var="aks_vm_size=${{ github.event.inputs.aks_vm_size }}" \
           -var="aks_authorized_ip_ranges=$AKS_IPS" \
-          -var="runner_ip=$RUNNER_IP" || true
-      continue-on-error: true
+          -var="runner_ip=${{ steps.runner_ip.outputs.runner_ip }}"
 
     - name: Save AKS Kubeconfig as Artifact
       if: always() && github.event.inputs.action == 'apply'
@@ -200,15 +235,15 @@ jobs:
             echo "Deleting resource group: $rg"
             az group delete --name "$rg" --yes --no-wait
           fi
-        done
-        echo "Azure CLI cleanup initiated. Waiting for deletion to complete..."
-        for rg in $(az group list --query "[?contains(name, 'appsec-exercise')].name" -o tsv); do
+          done
+          echo "Azure CLI cleanup initiated. Waiting for deletion to complete..."
+          for rg in $(az group list --query "[?contains(name, 'appsec-exercise')].name" -o tsv); do
           if [ -n "$rg" ]; then
             echo "Waiting for resource group $rg deletion..."
             az group wait --name "$rg" --deleted --timeout 600 || echo "Resource group $rg may have already been deleted or timeout"
           fi
-        done
-        echo "Azure CLI cleanup completed."
+          done
+          echo "Azure CLI cleanup completed."
         fi
         terraform destroy -auto-approve \
           -var="location=${{ github.event.inputs.location }}" \
@@ -226,12 +261,19 @@ jobs:
 
         echo "Found state file, uploading to Azure Blob Storage..."
         STATE_FILE="terraform/terraform.tfstate"
+        RUNNER_IP="${{ steps.runner_ip.outputs.runner_ip }}"
 
-        # Upload using service principal auth via Azure CLI login
+        # Get storage account name from terraform output
         TFSTATE_STORAGE_ACCOUNT=$(cd terraform && terraform output -raw storage_account_name 2>/dev/null)
+        if [ -z "$TFSTATE_STORAGE_ACCOUNT" ]; then
+          echo "terraform output did not return storage account name, trying to find existing one..."
+          TFSTATE_STORAGE_ACCOUNT=$(az storage account list \
+            --resource-group "$RESOURCE_GROUP" \
+            --query "[?contains(name, 'appsecbackup')].name | [0]" -o tsv 2>/dev/null)
+        fi
 
         if [ -z "$TFSTATE_STORAGE_ACCOUNT" ]; then
-          echo "ERROR: Could not get storage account name from terraform output"
+          echo "ERROR: Could not get storage account name"
           exit 1
         fi
 
@@ -246,43 +288,38 @@ jobs:
           exit 1
         fi
 
-        # Get runner IP and add to storage account network rules
-        # (storage account has public_network_access_enabled=false with default_action=Deny)
-        RUNNER_IP=$(curl -s https://api.ipify.org)
+        # Runner IP was already added in Pre-add Runner IP step, but add again just in case
         if [ -n "$RUNNER_IP" ]; then
           echo "Runner IP: $RUNNER_IP"
-          echo "Adding runner IP to storage account network rules..."
+          echo "Adding runner IP to storage account network rules (if not already present)..."
           az storage account network-rule add \
             --account-name "$TFSTATE_STORAGE_ACCOUNT" \
             --resource-group "$RESOURCE_GROUP" \
             --ip "$RUNNER_IP" 2>/dev/null || echo "Network rule may already exist"
-          # Wait for network rule propagation (Azure can take up to 30s)
-          echo "Waiting for network rule propagation (15s)..."
-          sleep 15
+          # Wait for network rule propagation
+          echo "Waiting for network rule propagation (30s)..."
+          sleep 30
         fi
 
         # Upload the TF state file with retry logic for network rule propagation
-        if ! az storage blob upload \
-          --account-name "$TFSTATE_STORAGE_ACCOUNT" \
-          --account-key "$TFSTATE_STORAGE_KEY" \
-          --container-name "${TFSTATE_CONTAINER}" \
-          --name "terraform.tfstate" \
-          --file "$STATE_FILE" \
-          --auth-mode key \
-          --overwrite 2>&1; then
-          echo "Upload failed, waiting for propagation and retrying (15s)..."
-          sleep 15
-          az storage blob upload \
+        MAX_RETRIES=3
+        for attempt in $(seq 1 $MAX_RETRIES); do
+          echo "Upload attempt $attempt/$MAX_RETRIES..."
+          if az storage blob upload \
             --account-name "$TFSTATE_STORAGE_ACCOUNT" \
             --account-key "$TFSTATE_STORAGE_KEY" \
             --container-name "${TFSTATE_CONTAINER}" \
             --name "terraform.tfstate" \
             --file "$STATE_FILE" \
             --auth-mode key \
-            --overwrite
-        fi
-
-        echo "TF state uploaded to Azure Blob Storage successfully"
+            --overwrite 2>&1; then
+            echo "TF state uploaded to Azure Blob Storage successfully"
+            break
+          else
+            echo "Upload failed on attempt $attempt, waiting for propagation and retrying (30s)..."
+            sleep 30
+          fi
+        done
 
         # Clean up: remove the runner IP from network rules
         if [ -n "$RUNNER_IP" ]; then

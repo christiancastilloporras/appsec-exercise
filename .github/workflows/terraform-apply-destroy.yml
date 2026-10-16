@@ -114,7 +114,7 @@ jobs:
       run: |
         cd terraform
         terraform init -input=false -reconfigure \
-          -var="tfc_organization=${{ secrets.TFC_ORG_NAME }}"
+          -backend-config="organization=${{ secrets.TFC_ORG_NAME }}"
       env:
         TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TEAM_TOKEN }}
 
@@ -195,7 +195,6 @@ jobs:
           -var="location=${{ github.event.inputs.location }}" \
           -var="mongo_vm_size=${{ github.event.inputs.mongo_vm_size }}" \
           -var="aks_vm_size=${{ github.event.inputs.aks_vm_size }}" \
-          -var="aks_authorized_ip_ranges=$AKS_IPS" \
-          -var="tfc_organization=${{ secrets.TFC_ORG_NAME }}"
+          -var="aks_authorized_ip_ranges=$AKS_IPS"
       env:
         TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TEAM_TOKEN }}

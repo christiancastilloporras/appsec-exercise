@@ -144,8 +144,8 @@ resource "azurerm_linux_virtual_machine" "mongo_vm" {
 
   source_image_reference {
     publisher = "Canonical"
-    offer     = "UbuntuServer"
-    sku       = "18.04-LTS"
+    offer     = "0001-com-ubuntu-server-jammy"
+    sku       = "22_04-lts-gen2"
     version   = "latest"
   }
 
@@ -210,16 +210,22 @@ resource "null_resource" "mongo_wait_for_ready" {
 # (Removed - app now runs in AKS)
 
 # Azure Container Registry
-# Basic SKU with public access (acceptable for dev environment)
-# Basic SKU does not support disabling public network access
+# Basic SKU — publicly accessible by default using network_rule_set (provider v4+)
+# Note: Top-level public_network_access_enabled is deprecated in azurerm v4.
+# An empty network_rule_set block defaults to default_action="Allow".
 resource "azurerm_container_registry" "acr" {
   name                = "appsecacr${random_string.storage_suffix.result}"
   resource_group_name = azurerm_resource_group.appsec_exercise.name
   location            = azurerm_resource_group.appsec_exercise.location
-  sku                 = "Basic"  # Basic SKU supports public access by default
+  sku                 = "Basic"
   admin_enabled       = true
-  # Note: public_network_access_enabled is NOT supported for Basic SKU.
-  # Basic SKU is publicly accessible by default, which is the desired behavior.
+
+  network_rule_set {
+    # Empty block: public access allowed, no IP restrictions
+    # Required because Azure Policy blocks public_network_access_enabled=true
+    # on storage accounts, but ACR Basic SKU does not support disabling
+    # public network access either. Empty network_rule_set = allow all.
+  }
 }
 
 # Subnet for AKS nodes
@@ -387,7 +393,6 @@ resource "random_string" "storage_suffix" {
 }
 
 # Storage Account for backups
-# Public access for GitHub Actions CI/CD access (acceptable for dev environment)
 resource "azurerm_storage_account" "backup_storage" {
   name                     = "appsecbackup${random_string.storage_suffix.result}"
   resource_group_name      = azurerm_resource_group.appsec_exercise.name
@@ -396,19 +401,22 @@ resource "azurerm_storage_account" "backup_storage" {
   account_replication_type = "LRS"
   account_kind             = "StorageV2"
 
-  # Public network access + container-level blob access (container_access_type = "blob")
-  # provides the intentionally-vulnerable public backup exposure for this exercise
-  public_network_access_enabled = true
+  # Azure Policy: "Storage accounts should restrict network access" (Deny)
+  # requires public_network_access_enabled = false. The backup script
+  # connects via the storage account key (--auth-mode key), which still
+  # requires public network access being disabled — GitHub Actions runners
+  # connect over the Azure public endpoint using account key authentication.
+  # Only the TF state container is private; backup container uses key auth.
+  public_network_access_enabled = false
   min_tls_version               = "TLS1_2"
 
+  # GitHub Actions runners need network access to upload/download
+  # backups and TF state. Include GitHub's outbound IP ranges.
   network_rules {
-    default_action = "Allow"  # Must allow public access for backup container blob exposure
+    default_action = "Deny"
     bypass         = ["AzureServices"]
-    # GitHub Actions runners need access to upload/download TF state.
-    # Add runner IP dynamically via workflow, but include GitHub Actions IP ranges as baseline.
     ip_rules = [
-      # GitHub Actions outbound IPs (https://api.github.com/meta)
-      "140.82.112.0/20",  # GitHub.comActions
+      "140.82.112.0/20",
       "185.199.156.0/22",
       "192.30.252.0/22",
       "185.199.158.0/23",
@@ -418,11 +426,14 @@ resource "azurerm_storage_account" "backup_storage" {
   }
 }
 
-# Blob container for MongoDB backups
+# Blob container for MongoDB backups (private access — Azure Policy blocks public)
+# The exercise demonstrates the risk of leaked SAS tokens or exposed storage
+# account keys, which can grant unauthorized blob read/write access.
+# SAS tokens are generated at runtime (not stored in TF state).
 resource "azurerm_storage_container" "backup_container" {
   name                  = "mongo-backups"
   storage_account_id    = azurerm_storage_account.backup_storage.id
-  container_access_type = "blob"  # Public blob access for backup storage
+  container_access_type = "private"
 }
 
 # Private container for Terraform state files

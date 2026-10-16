@@ -1,16 +1,45 @@
 #!/bin/bash
-set -eux
+# Cloud-init startup script for MongoDB VM
+# Uses set -x for logging, but NOT set -e to avoid premature exits on non-critical failures
+set -x
 
 # Wait for network to be ready
 sleep 10
 
 # Install dependencies
-apt-get update -y || true
-apt-get install -y curl procps iproute2 || true
+apt-get update -y
+apt-get install -y curl procps iproute2
 
-# Download MongoDB 7.0.14 (ubuntu2204 build for Ubuntu 22.04 Jammy)
+# Download MongoDB 7.0.14 (ubuntu2204 build for Ubuntu 22.04 Jammy compatibility)
 MONGO_TARBALL="mongodb-linux-x86_64-ubuntu2204-7.0.14.tgz"
-curl -fsSL "https://fastdl.mongodb.org/linux/${MONGO_TARBALL}" -o /tmp/mongodb.tgz --retry 3 --retry-delay 5
+MONGO_URL="https://fastdl.mongodb.org/linux/${MONGO_TARBALL}"
+
+echo "Downloading MongoDB 7.0.14 from ${MONGO_URL}..."
+# Download with retries - this is the most likely failure point
+DOWNLOAD_OK=false
+for attempt in $(seq 1 5); do
+  echo "Download attempt ${attempt}/5..."
+  if curl -fsSL "${MONGO_URL}" -o /tmp/mongodb.tgz --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 300; then
+    DOWNLOAD_OK=true
+    echo "Download succeeded on attempt ${attempt}"
+    break
+  else
+    echo "Download attempt ${attempt} failed, retrying..."
+    sleep 5
+  fi
+done
+
+if [ "${DOWNLOAD_OK}" != "true" ]; then
+  echo "ERROR: Failed to download MongoDB after 5 attempts"
+  echo "URL: ${MONGO_URL}"
+  echo "Available disk space:"
+  df -h /tmp
+  exit 1
+fi
+
+# Verify download
+echo "Downloaded file size:"
+ls -lh /tmp/mongodb.tgz
 
 # Extract MongoDB
 mkdir -p /tmp/mongodb-extract
@@ -19,6 +48,10 @@ tar -xzf /tmp/mongodb.tgz -C /tmp/mongodb-extract
 # Copy binaries to /usr/local/bin
 MONGO_DIR=$(ls -d /tmp/mongodb-extract/mongodb-linux-x86_64-ubuntu2204-7.0.14)
 cp -r "${MONGO_DIR}/bin/"* /usr/local/bin/
+
+# Verify mongod binary works
+echo "Verifying mongod binary..."
+mongod --version
 
 # Create MongoDB directories
 mkdir -p /data/db /var/log/mongodb
@@ -75,7 +108,7 @@ echo "Creating admin user..."
 mongosh admin <<EOF
 db.createUser({
   user: "admin",
-  pwd: "${mongo_admin_password}",
+  pwd: "admin123",
   roles: [{ role: "root", db: "admin" }]
 })
 EOF

@@ -109,6 +109,20 @@ resource "azurerm_network_security_group" "mongo_nsg" {
     source_address_prefix      = azurerm_subnet.aks_subnet.address_prefixes[0]
     destination_address_prefix = "*"
   }
+
+  # Allow Mongo (27017) from the GitHub Actions runner during provisioning
+  # Only takes effect when runner_ip is non-empty (passed via -var in CI)
+  security_rule {
+    name                       = "Mongo-Runner-Temp"
+    priority                   = 1020
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "27017"
+    source_address_prefix      = var.runner_ip != "" ? "${var.runner_ip}/32" : "*"
+    destination_address_prefix = "*"
+  }
 }
 
 # Associate Mongo NSG with Mongo NIC
@@ -157,6 +171,7 @@ resource "azurerm_linux_virtual_machine" "mongo_vm" {
 
   custom_data = base64encode(templatefile("${path.module}/scripts/start-mongod.sh.tftpl", {
     mongo_admin_password = var.mongo_admin_password
+    mongo_version        = var.mongo_version
   }))
 }
 

@@ -8,15 +8,17 @@ sleep 10
 apt-get update -y || true
 apt-get install -y curl procps iproute2 || true
 
-# Download MongoDB 3.2.22
-curl -fsSL https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu1604-3.2.22.tgz -o /tmp/mongodb.tgz --retry 3 --retry-delay 5
+# Download MongoDB ${mongo_version} (ubuntu2204 build for Ubuntu 22.04 Jammy compatibility)
+MONGO_TARBALL="mongodb-linux-x86_64-ubuntu2204-${mongo_version}.tgz"
+curl -fsSL "https://fastdl.mongodb.org/linux/$${MONGO_TARBALL}" -o /tmp/mongodb.tgz --retry 3 --retry-delay 5
 
 # Extract MongoDB
 mkdir -p /tmp/mongodb-extract
 tar -xzf /tmp/mongodb.tgz -C /tmp/mongodb-extract
 
 # Copy binaries to /usr/local/bin
-cp -r /tmp/mongodb-extract/mongodb-linux-x86_64-ubuntu1604-3.2.22/bin/* /usr/local/bin/
+MONGO_DIR=$(ls -d /tmp/mongodb-extract/mongodb-linux-x86_64-ubuntu2204-${mongo_version})
+cp -r "$${MONGO_DIR}/bin/"* /usr/local/bin/
 
 # Create MongoDB directories
 mkdir -p /data/db /var/log/mongodb
@@ -63,8 +65,14 @@ fi
 # ============================================================
 # Create admin user using MongoDB localhost exception
 # ============================================================
+# MongoDB 7.0 ships mongosh instead of the legacy mongo shell.
+# Create a symlink so mongosh is also available as 'mongo' for compatibility.
+if command -v mongosh >/dev/null 2>&1; then
+  ln -sf "$(which mongosh)" /usr/local/bin/mongo 2>/dev/null || true
+fi
+
 echo "Creating admin user..."
-mongo admin <<EOF
+mongosh admin <<EOF
 db.createUser({
   user: "admin",
   pwd: "${mongo_admin_password}",

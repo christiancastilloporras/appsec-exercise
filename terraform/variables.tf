@@ -30,13 +30,19 @@ variable "mongo_admin_password" {
 }
 
 variable "mongo_version" {
-  default = "3.2.22"
+  description = "MongoDB server version. Must have a matching ubuntu2204 binary on fastdl.mongodb.org. 3.2.22 only has ubuntu1604 builds (incompatible with Ubuntu 22.04 Jammy); minimum is 5.0+. Default: 7.0.14 (ubuntu2204)."
+  default     = "7.0.14"
 }
 
 variable "aks_authorized_ip_ranges" {
   type        = list(string)
   description = "List of CIDRs allowed to access AKS API server. Must include at least one IP to enable authorized IP ranges feature. Default: user's IP for initial access."
   default     = ["177.245.192.41/32"] # User's public IP - enables authorized IP ranges
+}
+
+variable "runner_ip" {
+  description = "Public IP of the GitHub Actions runner, added to mongo-nsg for port 27017 access during provisioning. Empty by default; passed via -var in CI."
+  default     = ""
 }
 
 variable "cloudflare_ip_ranges" {

@@ -125,6 +125,14 @@ jobs:
       if: github.event.inputs.action == 'apply'
       run: |
         cd terraform
+        # Resolve the GitHub Actions runner public IP and pass to Terraform
+        # so mongo_nsg opens port 27017 for this runner during provisioning.
+        RUNNER_IP=$(curl -s https://api.ipify.org)
+        if [ -z "$RUNNER_IP" ]; then
+          echo "ERROR: Could not determine runner public IP"
+          exit 1
+        fi
+        echo "Runner IP: $RUNNER_IP"
         # Convert comma-separated AKS authorized IPs to Terraform list format
         if [ -n "${{ inputs.aks_authorized_ips }}" ]; then
           AKS_IPS=$(echo "${{ inputs.aks_authorized_ips }}" | sed 's/,/", "/g' | sed 's/^/["/' | sed 's/$/"]/')
@@ -136,7 +144,8 @@ jobs:
           -var="location=${{ github.event.inputs.location }}" \
           -var="mongo_vm_size=${{ github.event.inputs.mongo_vm_size }}" \
           -var="aks_vm_size=${{ github.event.inputs.aks_vm_size }}" \
-          -var="aks_authorized_ip_ranges=$AKS_IPS" || true
+          -var="aks_authorized_ip_ranges=$AKS_IPS" \
+          -var="runner_ip=$RUNNER_IP" || true
       continue-on-error: true
 
     - name: Save AKS Kubeconfig as Artifact

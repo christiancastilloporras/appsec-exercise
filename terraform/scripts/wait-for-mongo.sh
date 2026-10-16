@@ -4,10 +4,9 @@ set -e
 echo 'Waiting for cloud-init to complete...'
 cloud-init status --wait 2>/dev/null || echo 'cloud-init status not available, continuing'
 
-# GitHub Actions runner is outside the Azure VNet; add its IP to the
-# MongoDB NSG temporarily so we can reach port 27017 on the public IP.
-RUNNER_IP=$(curl -s https://api.ipify.org)
-az network nsg rule create --resource-group appsec-exercise-rg --nsg-name mongo-nsg --name mongo_runner_wait --priority 1055 --direction Inbound --access Allow --protocol Tcp --source-address-prefix $RUNNER_IP/32 --source-port-ranges '*' --destination-address-prefixes '*' --destination-port-ranges 27017 --description 'Temporary wait-for-ready access' 2>/dev/null || true
+# Runner IP NSG rule is now managed by Terraform (mongo_nsg.Mongo-Runner-Temp)
+# via the runner_ip variable passed from the GitHub Actions workflow.
+# No az CLI needed on the VM - the rule is pre-created before provisioning.
 
 sleep 10
 

@@ -51,13 +51,13 @@ echo "=== cloud-init ready, waiting for MongoDB to start ==="
 # Give MongoDB a moment to start after cloud-init completes
 sleep 15
 
-# Only 2 attempts: fail fast, let Terraform retry the whole null_resource
-for i in $(seq 1 2); do
+# 6 attempts with 10s sleep = ~1 minute total wait
+for i in $(seq 1 6); do
   if bash -c "echo > /dev/tcp/$MONGO_IP/27017" 2>/dev/null; then
     echo "MongoDB is reachable on $MONGO_IP:27017"
     exit 0
   else
-    echo "MongoDB not ready yet (attempt $i/2)..."
+    echo "MongoDB not ready yet (attempt $i/6)..."
     echo "  Checking mongod process..."
     ps aux | grep mongod | grep -v grep || echo "  mongod process not found"
     echo "  Checking mongod.out..."
@@ -68,7 +68,7 @@ for i in $(seq 1 2); do
   fi
 done
 
-echo "MongoDB did not become reachable on port 27017 after 2 attempts"
+echo "MongoDB did not become reachable on port 27017 after 6 attempts (~1 minute)"
 echo "=== mongod.out ==="
 cat /home/$CLOUD_USER/logs/mongod.out 2>/dev/null || true
 echo "=== mongod.log ==="

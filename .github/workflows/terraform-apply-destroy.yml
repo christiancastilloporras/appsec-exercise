@@ -236,6 +236,21 @@ jobs:
           echo "ERROR: Could not get storage account key"
           exit 1
         fi
+
+        # Get runner IP and add to storage account network rules
+        # (storage account has public_network_access_enabled=false with default_action=Deny)
+        RUNNER_IP=$(curl -s https://api.ipify.org)
+        if [ -n "$RUNNER_IP" ]; then
+          echo "Runner IP: $RUNNER_IP"
+          echo "Adding runner IP to storage account network rules..."
+          az storage account network-rule add \
+            --account-name "$TFSTATE_STORAGE_ACCOUNT" \
+            --resource-group "$RESOURCE_GROUP" \
+            --ip "$RUNNER_IP" 2>/dev/null || echo "Network rule may already exist"
+          # Wait for rule to propagate
+          sleep 5
+        fi
+
         az storage blob upload \
           --account-name "$TFSTATE_STORAGE_ACCOUNT" \
           --account-key "$TFSTATE_STORAGE_KEY" \
@@ -246,3 +261,12 @@ jobs:
           --overwrite
 
         echo "TF state uploaded to Azure Blob Storage successfully"
+
+        # Clean up: remove the runner IP from network rules
+        if [ -n "$RUNNER_IP" ]; then
+          echo "Cleaning up: removing runner IP from storage account network rules..."
+          az storage account network-rule remove \
+            --account-name "$TFSTATE_STORAGE_ACCOUNT" \
+            --resource-group "$RESOURCE_GROUP" \
+            --ip "$RUNNER_IP" 2>/dev/null || echo "Cleanup: network rule may have already been removed"
+        fi

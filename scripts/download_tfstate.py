@@ -3,6 +3,7 @@
 import sys
 import os
 import subprocess
+import time
 
 
 def main():
@@ -32,6 +33,30 @@ def main():
         print(f"Failed to get storage key: {e}")
         sys.exit(0)
 
+    # Get runner IP and add to storage account network rules
+    # (storage account has public_network_access_enabled=false with default_action=Deny)
+    runner_ip = None
+    try:
+        ip_result = subprocess.run(
+            ["curl", "-s", "https://api.ipify.org"],
+            capture_output=True, text=True, timeout=10
+        )
+        runner_ip = ip_result.stdout.strip()
+        if runner_ip:
+            print(f"Runner IP: {runner_ip}")
+            # Add the runner IP to storage account network rules
+            subprocess.run(
+                ["az", "storage", "account", "network-rule", "add",
+                 "--account-name", storage_account,
+                 "--resource-group", resource_group,
+                 "--ip", runner_ip],
+                capture_output=True, text=True, timeout=60
+            )
+            # Wait a moment for the rule to propagate
+            time.sleep(5)
+    except Exception as e:
+        print(f"Warning: Could not add runner IP to network rules: {e}")
+
     try:
         result = subprocess.run(
             ["az", "storage", "blob", "download",
@@ -55,6 +80,17 @@ def main():
         print("State file not found in blob storage")
     except Exception as e:
         print(f"Failed to download state file: {e}")
+    finally:
+        # Clean up: remove the runner IP from network rules
+        if runner_ip:
+            print(f"Cleaning up: removing runner IP {runner_ip} from storage network rules")
+            subprocess.run(
+                ["az", "storage", "account", "network-rule", "remove",
+                 "--account-name", storage_account,
+                 "--resource-group", resource_group,
+                 "--ip", runner_ip],
+                capture_output=True, text=True, timeout=60
+            )
 
 
 if __name__ == "__main__":

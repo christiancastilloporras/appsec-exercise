@@ -110,10 +110,9 @@ resource "azurerm_network_security_group" "mongo_nsg" {
     destination_address_prefix = "*"
   }
 
-  # Allow Mongo (27017) from the GitHub Actions runner during provisioning.
-  # When runner_ip is empty (local terraform apply), falls back to allowing
-  # the local machine's detected public IP via the fallback_url.
-  # When runner_ip is set (CI), uses the explicit runner IP.
+  # Temporarily allow Mongo (27017) from anywhere during provisioning.
+  # This rule is removed after provisioning completes via a workflow
+  # post-step that deletes the rule, leaving only Mongo-AKS-Only.
   security_rule {
     name                       = "Mongo-Runner-Temp"
     priority                   = 1020
@@ -122,7 +121,7 @@ resource "azurerm_network_security_group" "mongo_nsg" {
     protocol                   = "Tcp"
     source_port_range          = "*"
     destination_port_range     = "27017"
-    source_address_prefix      = var.runner_ip != "" ? "${var.runner_ip}/32" : "*"
+    source_address_prefix      = "0.0.0.0/0"
     destination_address_prefix = "*"
   }
 }

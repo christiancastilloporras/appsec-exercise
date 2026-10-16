@@ -199,6 +199,19 @@ jobs:
         path: ${{ runner.temp }}/aks-artifact/kubeconfig
         retention-days: 7
 
+    - name: Cleanup Mongo NSG Temp Rule
+      if: always() && github.event.inputs.action == 'apply'
+      run: |
+        echo "Cleanup: Removing temporary Mongo NSG rule (0.0.0.0/0) to ensure security..."
+        MONGO_NSG=$(az network nsg list --resource-group "$RESOURCE_GROUP" --query "[?contains(name, 'mongo-nsg')].name | [0]" -o tsv 2>/dev/null)
+        if [ -n "$MONGO_NSG" ]; then
+          echo "Found Mongo NSG: $MONGO_NSG. Deleting rule 'Mongo-Runner-Temp'..."
+          az network nsg rule delete --resource-group "$RESOURCE_GROUP" --nsg-name "$MONGO_NSG" --name "Mongo-Runner-Temp" 2>/dev/null || echo "Rule 'Mongo-Runner-Temp' already removed or not found."
+          echo "Cleanup completed. Only Mongo-AKS-Only rule remains (AKS subnet CIDR)."
+        else
+          echo "Could not find Mongo NSG. Skipping rule deletion."
+        fi
+
     - name: Copy State for Upload
       if: always() && github.event.inputs.action == 'apply'
       run: |

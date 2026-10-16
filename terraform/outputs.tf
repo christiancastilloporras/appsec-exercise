@@ -74,14 +74,6 @@ output "backup_storage_url" {
   value = "${azurerm_storage_account.backup_storage.primary_blob_endpoint}${azurerm_storage_container.backup_container.name}"
 }
 
-output "tfstate_container_name" {
-  value = azurerm_storage_container.tfstate_container.name
-}
-
-output "tfstate_storage_url" {
-  value = "${azurerm_storage_account.backup_storage.primary_blob_endpoint}${azurerm_storage_container.tfstate_container.name}"
-}
-
 output "aks_nsg_id" {
   value = azurerm_network_security_group.aks_nsg.id
 }

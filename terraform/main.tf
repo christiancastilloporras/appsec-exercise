@@ -439,10 +439,3 @@ resource "azurerm_storage_container" "backup_container" {
   storage_account_id    = azurerm_storage_account.backup_storage.id
   container_access_type = "private"
 }
-
-# Private container for Terraform state files
-resource "azurerm_storage_container" "tfstate_container" {
-  name                  = "tfstate"
-  storage_account_id    = azurerm_storage_account.backup_storage.id
-  container_access_type = "private"
-}

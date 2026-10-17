@@ -9,7 +9,14 @@ docs/
 *.tfstate
 *.tfstate.backup
 *.tfplan
+*.tfplan.*
+tfplan
+tfplan.*
+crash.log
+crash.*.log
 .terraform.lock.hcl
+backend.*.tf
+local.*.hcl
 
 # IDE
 .vscode/

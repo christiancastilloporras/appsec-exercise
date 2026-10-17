@@ -81,8 +81,6 @@ jobs:
         AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-        TFC_TEAM_TOKEN: ${{ secrets.TFC_TEAM_TOKEN }}
-        TFC_ORG_NAME: ${{ secrets.TFC_ORG_NAME }}
 
     - name: Build creds JSON from separated secrets
       id: build_creds
@@ -128,28 +126,6 @@ jobs:
         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
 
-    - name: Sync State FROM Terraform Cloud
-      run: |
-        cd terraform
-        echo "Pulling current state from TFC..."
-        # 1. Get current state version
-        STATE_JSON=$(curl -s -H "Authorization: Bearer ${TFC_TOKEN}" \
-          "https://app.terraform.io/api/v2/organizations/${TFC_ORG}/workspaces/${TFC_WORKSPACE}/current-state-version")
-        
-        DOWNLOAD_URL=$(echo $STATE_JSON | jq -r '.data.attributes."hosted-state-download-url"')
-        
-        if [ "$DOWNLOAD_URL" != "null" ] && [ -n "$DOWNLOAD_URL" ]; then
-          echo "Downloading state from $DOWNLOAD_URL"
-          curl -s -H "Authorization: Bearer ${TFC_TOKEN}" -L "$DOWNLOAD_URL" -o terraform.tfstate
-          echo "State pulled successfully."
-        else
-          echo "No state found in TFC (new workspace or empty state). Starting fresh."
-          touch terraform.tfstate
-        fi
-      env:
-        TFC_TOKEN: ${{ secrets.TFC_TEAM_TOKEN }}
-        TFC_ORG: ${{ secrets.TFC_ORG_NAME }}
-
     - name: Terraform Init
       run: |
         cd terraform
@@ -178,33 +154,6 @@ jobs:
           -var="location=${{ github.event.inputs.location }}" \
           -var="mongo_vm_size=${{ github.event.inputs.mongo_vm_size }}" \
           -var="aks_vm_size=${{ github.event.inputs.aks_vm_size }}"
-
-    - name: Sync State TO Terraform Cloud
-      if: always()
-      run: |
-        cd terraform
-        echo "Pushing updated state to TFC..."
-        # 1. Request an upload URL
-        UPLOAD_JSON=$(curl -s -X POST -H "Authorization: Bearer ${TFC_TOKEN}" \
-          -H "Content-Type: application/vnd.api+json" \
-          -d '{"data":{"type":"state-versions","attributes":{"uploaded_at":"'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"}}}' \
-          "https://app.terraform.io/api/v2/organizations/${TFC_ORG}/workspaces/${TFC_WORKSPACE}/state-versions")
-        
-        UPLOAD_URL=$(echo $UPLOAD_JSON | jq -r '.data.attributes."hosted-state-upload-url"')
-        
-        if [ "$UPLOAD_URL" != "null" ] && [ -n "$UPLOAD_URL" ]; then
-          echo "Uploading state to $UPLOAD_URL"
-          curl -s -X PUT -H "Content-Type: application/octet-stream" \
-            -H "Authorization: Bearer ${TFC_TOKEN}" \
-            --data-binary @terraform.tfstate "$UPLOAD_URL"
-          echo "State pushed successfully."
-        else
-          echo "ERROR: Could not obtain upload URL from TFC API. State not saved!"
-          exit 1
-        fi
-      env:
-        TFC_TOKEN: ${{ secrets.TFC_TEAM_TOKEN }}
-        TFC_ORG: ${{ secrets.TFC_ORG_NAME }}
 
     - name: Save AKS Kubeconfig as Artifact
       if: always() && github.event.inputs.action == 'apply'

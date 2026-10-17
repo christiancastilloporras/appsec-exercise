@@ -1,0 +1,123 @@
+name: Delete Resource Group
+
+on:
+  workflow_dispatch:
+    inputs:
+      resource_group:
+        description: 'Azure Resource Group to delete'
+        required: false
+        default: 'appsec-exercise-rg'
+      location:
+        description: 'Azure Region (for validation/confirmation)'
+        required: false
+        default: 'West US'
+
+permissions:
+  contents: read
+
+env:
+  DEFAULT_RESOURCE_GROUP: appsec-exercise-rg
+
+jobs:
+  delete-resource-group:
+    runs-on: ubuntu-24.04
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v5
+
+    - name: Validate Secrets
+      run: |
+        for secret_name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_CLIENT_SECRET; do
+          if [ -z "${!secret_name}" ]; then
+            echo "ERROR: $secret_name secret is not set or empty" >&2
+            exit 1
+          fi
+        done
+        echo "All Azure secrets validated"
+      env:
+        AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+
+    - name: Build creds JSON from separated secrets
+      id: build_creds
+      env:
+        AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      run: |
+        cat > "$GITHUB_OUTPUT" <<EOF
+        creds_json={"clientId":"${AZURE_CLIENT_ID}","clientSecret":"${AZURE_CLIENT_SECRET}","tenantId":"${AZURE_TENANT_ID}","subscriptionId":"${AZURE_SUBSCRIPTION_ID}","activeDirectoryAppIdUrl":"https://login.microsoftonline.com/${AZURE_TENANT_ID}/oauth2/authorize","activeDirectoryGraphResourceId":"https://graph.windows.net/","activeDirectoryServiceEndpointResourceId":"https://management.azure.com/"}
+        EOF
+
+    - name: Configure Azure Credentials
+      uses: azure/login@v3
+      with:
+        creds: ${{ steps.build_creds.outputs.creds_json }}
+
+    - name: Determine Resource Group
+      id: determine_rg
+      run: |
+        RG="${{ inputs.resource_group }}"
+        if [ -z "$RG" ] || [ "$RG" == "" ]; then
+          RG="${{ env.DEFAULT_RESOURCE_GROUP }}"
+        fi
+        echo "RESOURCE_GROUP=$RG" >> $GITHUB_ENV
+        echo "resource_group=$RG" >> $GITHUB_OUTPUT
+        echo "Resource group to delete: $RG"
+        echo "Current subscription: $(az account show --query 'name' -o tsv)"
+      env:
+        AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    - name: Check if Resource Group Exists
+      id: check_rg
+      run: |
+        echo "Checking if resource group $RESOURCE_GROUP exists..."
+        if az group exists --name "$RESOURCE_GROUP"; then
+          echo "Resource group $RESOURCE_GROUP EXISTS"
+          echo "RESOURCE_GROUP_EXISTS=true" >> $GITHUB_OUTPUT
+        else
+          echo "Resource group $RESOURCE_GROUP does NOT exist"
+          echo "RESOURCE_GROUP_EXISTS=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Delete Resource Group
+      id: delete_rg
+      if: steps.check_rg.outputs.RESOURCE_GROUP_EXISTS == 'true'
+      run: |
+        echo "Starting deletion of resource group: $RESOURCE_GROUP"
+        echo "Initiating delete with --no-wait, then polling for completion..."
+        az group delete --name "$RESOURCE_GROUP" --yes --no-wait
+        echo "Deletion initiated. Polling for completion..."
+        # Poll until the resource group is gone
+        while true; do
+          if az group exists --name "$RESOURCE_GROUP"; then
+            echo "Resource group still exists, waiting 15 seconds..."
+            sleep 15
+          else
+            echo "Resource group $RESOURCE_GROUP has been fully deleted."
+            break
+          fi
+        done
+      env:
+        RESOURCE_GROUP: ${{ steps.determine_rg.outputs.resource_group }}
+
+    - name: Confirm Resource Group Deletion
+      if: always()
+      run: |
+        if [ "${{ steps.check_rg.outputs.RESOURCE_GROUP_EXISTS }}" == "false" ]; then
+          echo "Resource group was already deleted or did not exist."
+        elif [ "${{ steps.delete_rg.outcome }}" == "success" ]; then
+          echo "Resource group successfully deleted."
+        else
+          echo "Resource group deletion job did not complete or failed."
+          echo "Checking current state..."
+          az group exists --name "$RESOURCE_GROUP" && echo "RG still exists" || echo "RG no longer exists"
+        fi
+      env:
+        RESOURCE_GROUP: ${{ steps.determine_rg.outputs.resource_group }}

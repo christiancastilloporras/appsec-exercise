@@ -34,7 +34,6 @@ permissions:
 env:
   RESOURCE_GROUP: appsec-exercise-rg
   TF_VERSION: 1.7.5
-  TFC_WORKSPACE: "appsec-exercise"
 
 jobs:
   terraform:
@@ -43,20 +42,40 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v5
 
+    - name: Set AWS Credentials for RustFS S3 Backend
+      run: |
+        echo "Setting AWS credentials for RustFS S3 backend"
+        echo "AWS_ACCESS_KEY_ID=${RUST_FS_ACCESS}" >> $GITHUB_ENV
+        echo "AWS_SECRET_ACCESS_KEY=${RUST_FS_SECRET}" >> $GITHUB_ENV
+        echo "AWS_ENDPOINT=${RUST_FS_FQDN}" >> $GITHUB_ENV
+      env:
+        RUST_FS_ACCESS: ${{ secrets.RUST_FS_ACCESS }}
+        RUST_FS_SECRET: ${{ secrets.RUST_FS_SECRET }}
+        RUST_FS_FQDN: ${{ secrets.RUST_FS_FQDN }}
+
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v4
       with:
         terraform_version: ${{ env.TF_VERSION }}
 
+    - name: Configure AWS Credentials
+      run: |
+        echo "Setting AWS credentials as environment variables"
+        echo "AWS_ACCESS_KEY_ID=${RUST_FS_ACCESS}" >> $GITHUB_ENV
+        echo "AWS_SECRET_ACCESS_KEY=${RUST_FS_SECRET}" >> $GITHUB_ENV
+      env:
+        RUST_FS_ACCESS: ${{ secrets.RUST_FS_ACCESS }}
+        RUST_FS_SECRET: ${{ secrets.RUST_FS_SECRET }}
+
     - name: Validate Secrets
       run: |
-        for secret_name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_CLIENT_SECRET TFC_TEAM_TOKEN TFC_ORG_NAME; do
+        for secret_name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_CLIENT_SECRET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
           if [ -z "${!secret_name}" ]; then
             echo "ERROR: $secret_name secret is not set or empty" >&2
             exit 1
           fi
         done
-        echo "All secrets validated (Azure + TFC)"
+        echo "All secrets validated (Azure + AWS)"
       env:
         AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
         AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}

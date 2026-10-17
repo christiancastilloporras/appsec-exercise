@@ -21,7 +21,6 @@ env:
   RESOURCE_GROUP: appsec-exercise-rg
   AKS_CLUSTER_NAME: appsec-aks-cluster
   ACR_NAME: PLACEHOLDER_ACR
-  TFSTATE_CONTAINER: tfstate
   TF_VERSION: 1.7.5
 
 jobs:
@@ -101,24 +100,12 @@ jobs:
           --name "$AKS_CLUSTER_NAME" \
           --api-server-authorized-ip-ranges "$COMBINED_IPS"
 
-    - name: Download Terraform State (if exists)
-      continue-on-error: true
+    - name: Set AWS Credentials for RustFS S3 Backend
       run: |
-        echo "Attempting to download Terraform state from Azure Blob Storage..."
-        TFSTATE_STORAGE_ACCOUNT=$(az storage account list \
-          --resource-group "$RESOURCE_GROUP" \
-          --query "[?contains(name, 'appsecbackup')].name | [0]" -o tsv 2>/dev/null)
-        if [ -n "$TFSTATE_STORAGE_ACCOUNT" ]; then
-          echo "Found storage account: $TFSTATE_STORAGE_ACCOUNT"
-          python3 scripts/download_tfstate.py "$TFSTATE_STORAGE_ACCOUNT" "$TFSTATE_CONTAINER" "$RESOURCE_GROUP"
-        else
-          echo "No storage account found in resource group $RESOURCE_GROUP"
-        fi
-        if [ -f terraform/terraform.tfstate ]; then
-          echo "State file found: $(wc -c < terraform/terraform.tfstate) bytes"
-        else
-          echo "No state file downloaded - using local state"
-        fi
+        echo "Setting AWS credentials for RustFS S3 backend"
+        echo "AWS_ACCESS_KEY_ID=${{ secrets.RUST_FS_ACCESS }}" >> $GITHUB_ENV
+        echo "AWS_SECRET_ACCESS_KEY=${{ secrets.RUST_FS_SECRET }}" >> $GITHUB_ENV
+        echo "AWS_ENDPOINT=${{ secrets.RUST_FS_FQDN }}" >> $GITHUB_ENV
 
     - name: Terraform Init
       run: |
@@ -378,40 +365,3 @@ jobs:
             --api-server-authorized-ip-ranges "$USER_IP"
         fi
 
-    - name: Upload TF State to Azure Blob Storage
-      if: always()
-      run: |
-        if [ ! -f terraform/terraform.tfstate ]; then
-          echo "No state file to upload"
-          exit 0
-        fi
-
-        echo "Found state file, uploading to Azure Blob Storage..."
-        STATE_FILE="terraform/terraform.tfstate"
-
-        TFSTATE_STORAGE_ACCOUNT=$(cd terraform && terraform output -raw storage_account_name 2>/dev/null)
-
-        if [ -z "$TFSTATE_STORAGE_ACCOUNT" ]; then
-          echo "ERROR: Could not get storage account name from terraform output"
-          exit 1
-        fi
-
-        echo "Uploading to storage account: $TFSTATE_STORAGE_ACCOUNT"
-        TFSTATE_STORAGE_KEY=$(az storage account keys list \
-          --account-name "$TFSTATE_STORAGE_ACCOUNT" \
-          --resource-group "$RESOURCE_GROUP" \
-          --query "[0].value" -o tsv 2>/dev/null)
-        if [ -z "$TFSTATE_STORAGE_KEY" ]; then
-          echo "ERROR: Could not get storage account key"
-          exit 1
-        fi
-        az storage blob upload \
-          --account-name "$TFSTATE_STORAGE_ACCOUNT" \
-          --account-key "$TFSTATE_STORAGE_KEY" \
-          --container-name "${TFSTATE_CONTAINER}" \
-          --name "terraform.tfstate" \
-          --file "$STATE_FILE" \
-          --auth-mode key \
-          --overwrite
-
-        echo "TF state uploaded to Azure Blob Storage successfully"

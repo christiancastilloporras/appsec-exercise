@@ -95,8 +95,7 @@ appsec-exercise/
 │   ├── secrets.yaml             # K8s Secrets (appsec-app-secrets, secret_key)
 │   └── seed-script.yaml         # Seed script ConfigMap (embedded seed_db.py)
 ├── scripts/
-│   ├── backup-mongo.sh          # MongoDB backup script (manual trigger)
-│   └── download_tfstate.py      # Download Terraform state from Azure Blob Storage
+│   └── backup-mongo.sh          # MongoDB backup script (manual trigger, backs up to Azure Blob Storage)
 ├── terraform/
 │   ├── main.tf                  # Main IaC config (VMs, AKS, ACR, NSGs, storage, networking)
 │   ├── variables.tf             # Variables (VM sizes, versions, IP ranges, passwords)
@@ -151,7 +150,6 @@ Terraform creates:
 - Azure Container Registry (ACR) with admin enabled
 - Storage Account (`appsecbackup<suffix>`) with:
   - `mongo-backups` container (public blob access — intentionally vulnerable)
-  - `tfstate` container (private — for Terraform state)
 - Network Security Groups:
   - AKS NSG: ports 80/443 from Cloudflare IPs, 443 from authorized IPs, health probes internal + AzureLoadBalancer
   - MongoDB NSG: SSH from any, port 27017 from AKS subnet only
@@ -168,16 +166,15 @@ Use the app-deploy workflow:
 ```
 
 The app-deploy workflow:
-1. Downloads existing Terraform state from Azure Blob Storage
-2. Runs `terraform init` + outputs to get Mongo private IP, passwords, ACR credentials
-3. Authorizes the runner IP on the AKS API server (temporarily)
-4. Builds and pushes Docker image to ACR
-5. Runs Trivy vulnerability scan (non-blocking)
-6. Applies K8s manifests with templated image/acr/mongo values
-7. Creates TLS secret from Cloudflare Origin CA (if configured)
-8. Waits for LoadBalancer IP and creates Cloudflare DNS record
-9. Verifies deployment via port-forward
-10. Restores AKS API authorized IPs and uploads TF state
+1. Runs `terraform init` + outputs to get Mongo private IP, passwords, ACR credentials (state managed via RustFS S3 backend)
+2. Authorizes the runner IP on the AKS API server (temporarily)
+3. Builds and pushes Docker image to ACR
+4. Runs Trivy vulnerability scan (non-blocking)
+5. Applies K8s manifests with templated image/acr/mongo values
+6. Creates TLS secret from Cloudflare Origin CA (if configured)
+7. Waits for LoadBalancer IP and creates Cloudflare DNS record
+8. Verifies deployment via port-forward
+9. Restores AKS API authorized IPs
 
 ### Step 3: Database Seeding
 
@@ -254,6 +251,9 @@ Each workflow assembles the four independent GitHub secrets (`AZURE_CLIENT_ID`, 
 | `CORTEX_API_BASE_URL` | Cortex XDR API base URL for code scanning | No |
 | `CORTEX_API_KEY` | Cortex XDR API key for code scanning | No |
 | `CORTEX_API_KEY_ID` | Cortex XDR API key ID for code scanning | No |
+|| `RUST_FS_ACCESS` | AWS access key ID for RustFS S3 Terraform backend | Yes |
+|| `RUST_FS_SECRET` | AWS secret access key for RustFS S3 Terraform backend | Yes |
+|| `RUST_FS_FQDN` | RustFS S3 endpoint URL (e.g. `https://s3.cloudguardian.xyz`) | Yes |
 
 ### Authentication
 
@@ -341,20 +341,14 @@ All contacts stored in MongoDB (`contacts` collection), associated with the auth
 
 ### Terraform State Management
 
-Terraform state files are stored in **Azure Blob Storage** in a private `tfstate` container.
+Terraform state files are stored in a **RustFS S3-compatible backend** (configured in `terraform/backend.tf`). No state download/upload logic is needed in workflows — `terraform init` provisions the S3 backend natively.
 
-| Workflow | State Download | State Upload |
-|---|---|---|
-| `terraform-apply-destroy.yml` | `az storage account list` + `az storage blob download` | `az storage blob upload` (apply only) |
-| `app-deploy.yml` | `az storage account list` + `az storage blob download` | `az storage blob upload` |
+| Workflow | State Backend | State Download | State Upload |
+|---|---|---|---|
+| `terraform-apply-destroy.yml` | RustFS S3 | N/A — handled by `terraform init` | N/A — handled by `terraform init` |
+| `app-deploy.yml` | RustFS S3 | N/A — handled by `terraform init` | N/A — handled by `terraform init` |
 
-The download uses Azure CLI with service principal auth to access the private `tfstate` container. The storage account name is discovered dynamically via `az storage account list` using the resource group filter.
-
-The state download is handled by `scripts/download_tfstate.py`, which:
-1. Accepts storage account name, container name, and resource group as arguments
-2. Fetches the storage account key via `az storage account keys list`
-3. Downloads `terraform.tfstate` from the private `tfstate` container
-4. Uses `--auth-mode key` for blob access with the retrieved key
+The S3 backend is configured via `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_ENDPOINT` environment variables, backed by the `RUST_FS_ACCESS`, `RUST_FS_SECRET`, and `RUST_FS_FQDN` GitHub secrets.
 
 ### Node.js Version Compatibility
 
@@ -450,21 +444,16 @@ resource "azurerm_storage_container" "backup_container" {
   storage_account_id    = azurerm_storage_account.backup_storage.id
   container_access_type = "blob"  # "blob" = anonymous read access (intentionally vulnerable)
 }
-
-resource "azurerm_storage_container" "tfstate_container" {
-  name                  = "tfstate"
-  storage_account_id    = azurerm_storage_account.backup_storage.id
-  container_access_type = "private"  # TF state stored privately
-}
 ```
 
-| Property | Value | Risk |
-|---|---|---|
-| `public_network_access_enabled` | `true` | Public network access allowed |
-| `min_tls_version` | `TLS1_2` | Weak TLS protocol (below 1.3) |
-| `container_access_type` (backup) | `blob` | Anonymous read access to all blobs |
-| `container_access_type` (tfstate) | `private` | No anonymous access |
-| `default_action` | `Allow` | No network restrictions |
+Note: Terraform state is stored in a RustFS S3-compatible backend (not Azure Blob Storage). See "Terraform State Management" section above for details.
+
+|| Property | Value | Risk |
+||---|---|---|
+|| `public_network_access_enabled` | `true` | Public network access allowed |
+|| `min_tls_version` | `TLS1_2` | Weak TLS protocol (below 1.3) |
+|| `container_access_type` (backup) | `blob` | Anonymous read access to all blobs |
+|| `default_action` | `Allow` | No network restrictions |
 
 ### MongoDB VM Configuration
 
@@ -582,9 +571,8 @@ resource "azurerm_kubernetes_cluster" "aks" {
 | `aks_kube_config` | Raw kubeconfig for AKS cluster (sensitive) |
 | `aks_nsg_id` | AKS Network Security Group ID |
 | `aks_nsg_name` | AKS Network Security Group name |
-| `storage_account_name` | Storage account name for backups and TF state |
+| `storage_account_name` | Storage account name for MongoDB backups |
 | `storage_container_name` | Blob container for backups (`mongo-backups`) |
-| `tfstate_container_name` | Blob container for TF state (`tfstate`, private) |
 | `storage_primary_blob_endpoint` | Storage account blob endpoint URL |
 | `storage_blob_access_key` | Storage account access key (sensitive) |
 

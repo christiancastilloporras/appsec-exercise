@@ -67,15 +67,15 @@ jobs:
         RUST_FS_ACCESS: ${{ secrets.RUST_FS_ACCESS }}
         RUST_FS_SECRET: ${{ secrets.RUST_FS_SECRET }}
 
-    - name: Validate Secrets
+    - name: Validate Azure Secrets
       run: |
-        for secret_name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_CLIENT_SECRET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT RUST_FS_FQDN; do
+        for secret_name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_CLIENT_SECRET; do
           if [ -z "${!secret_name}" ]; then
             echo "ERROR: $secret_name secret is not set or empty" >&2
             exit 1
           fi
         done
-        echo "All secrets validated (Azure + AWS)"
+        echo "All Azure secrets validated"
       env:
         AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
         AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}

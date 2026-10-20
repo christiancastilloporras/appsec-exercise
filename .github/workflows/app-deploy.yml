@@ -21,7 +21,7 @@ env:
   RESOURCE_GROUP: appsec-exercise-rg
   AKS_CLUSTER_NAME: appsec-aks-cluster
   ACR_NAME: PLACEHOLDER_ACR
-  TF_VERSION: 1.7.5
+  TF_VERSION: 1.12.2
 
 jobs:
   build-and-deploy:

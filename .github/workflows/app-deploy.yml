@@ -111,11 +111,14 @@ jobs:
       run: |
         echo "Installing awscli for S3 backend connectivity test..."
         pip install --quiet awscli
-        echo "Testing S3 connectivity to RustFS at https://$AWS_ENDPOINT ..."
+        # AWS_ENDPOINT already contains the full URL (e.g. https://s3.cloudguardian.xyz)
+        # Strip protocol to get the bare host, then let awscli add https:// back
+        S3_HOST=$(echo "$AWS_ENDPOINT" | sed 's|https://||;s|http://||')
+        echo "Testing S3 connectivity to RustFS at https://$S3_HOST ..."
         # Test bucket listing (validates credentials, endpoint, and SigV4 signing)
         # Do NOT use 'set -e' here so we can capture the exit code and report a helpful error
         set +e
-        aws --endpoint-url "https://$AWS_ENDPOINT" \
+        aws --endpoint-url "https://$S3_HOST" \
           --region us-east-1 \
           s3 ls "s3://tfstate" 2>&1
         LIST_EXIT=$?

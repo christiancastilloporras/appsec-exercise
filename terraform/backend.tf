@@ -15,5 +15,10 @@ terraform {
     skip_requesting_account_id  = true
     skip_s3_checksum            = true
     use_lockfile                = true
+    # Override workspace_key_prefix from default "env:" to "env_" — the colon
+    # gets URL-encoded as "%3A" in the ListObjectsV2 prefix query parameter,
+    # which causes SigV4 SignatureDoesNotMatch with RustFS's s3s-rs library.
+    # The aws CLI test uses "env_" as well, so both will match.
+    workspace_key_prefix        = "env_"
   }
 }

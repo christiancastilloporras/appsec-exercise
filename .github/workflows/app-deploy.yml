@@ -107,6 +107,28 @@ jobs:
         echo "AWS_SECRET_ACCESS_KEY=${{ secrets.RUST_FS_SECRET }}" >> $GITHUB_ENV
         echo "AWS_ENDPOINT=${{ secrets.RUST_FS_FQDN }}" >> $GITHUB_ENV
 
+    - name: Test RustFS S3 Backend Connectivity
+      run: |
+        echo "Installing awscli for S3 backend connectivity test..."
+        pip install --quiet awscli
+        echo "Testing S3 connectivity to RustFS at https://$AWS_ENDPOINT ..."
+        # Test bucket listing (validates credentials, endpoint, and SigV4 signing)
+        # Do NOT use 'set -e' here so we can capture the exit code and report a helpful error
+        set +e
+        aws --endpoint-url "https://$AWS_ENDPOINT" \
+          --region us-east-1 \
+          s3 ls "s3://tfstate" 2>&1
+        LIST_EXIT=$?
+        if [ $LIST_EXIT -ne 0 ]; then
+          echo "ERROR: RustFS S3 backend connectivity test failed (exit code: $LIST_EXIT)"
+          echo "This means terraform init will also fail. Check:"
+          echo "  - RUST_FS_FQDN is correct and reachable"
+          echo "  - RUST_FS_ACCESS and RUST_FS_SECRET are valid"
+          echo "  - The 'tfstate' bucket exists on the RustFS instance"
+          exit 1
+        fi
+        echo "RustFS S3 backend connectivity test passed. Bucket 'tfstate' is accessible."
+
     - name: Terraform Init
       run: |
         cd terraform

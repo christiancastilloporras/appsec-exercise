@@ -69,7 +69,7 @@ jobs:
 
     - name: Validate Secrets
       run: |
-        for secret_name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_CLIENT_SECRET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+        for secret_name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_CLIENT_SECRET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT RUST_FS_FQDN; do
           if [ -z "${!secret_name}" ]; then
             echo "ERROR: $secret_name secret is not set or empty" >&2
             exit 1
@@ -81,6 +81,46 @@ jobs:
         AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+
+    - name: Validate AWS Credentials for RustFS S3 Backend
+      run: |
+        for secret_name in RUST_FS_ACCESS RUST_FS_SECRET RUST_FS_FQDN; do
+          if [ -z "${!secret_name}" ]; then
+            echo "ERROR: $secret_name secret is not set or empty" >&2
+            exit 1
+          fi
+        done
+        echo "All RustFS secrets validated"
+      env:
+        RUST_FS_ACCESS: ${{ secrets.RUST_FS_ACCESS }}
+        RUST_FS_SECRET: ${{ secrets.RUST_FS_SECRET }}
+        RUST_FS_FQDN: ${{ secrets.RUST_FS_FQDN }}
+
+    - name: Test RustFS S3 Backend Connectivity
+      run: |
+        echo "Installing awscli for S3 backend connectivity test..."
+        pip install --quiet awscli
+        echo "Testing S3 connectivity to RustFS at https://$RUST_FS_FQDN ..."
+        # Test bucket listing (validates credentials, endpoint, and SigV4 signing)
+        # Do NOT use 'set -e' here so we can capture the exit code and report a helpful error
+        set +e
+        aws --endpoint-url "https://$RUST_FS_FQDN" \
+          --region us-east-1 \
+          s3 ls "s3://tfstate" 2>&1
+        LIST_EXIT=$?
+        if [ $LIST_EXIT -ne 0 ]; then
+          echo "ERROR: RustFS S3 backend connectivity test failed (exit code: $LIST_EXIT)"
+          echo "This means terraform init will also fail. Check:"
+          echo "  - RUST_FS_FQDN is correct and reachable"
+          echo "  - RUST_FS_ACCESS and RUST_FS_SECRET are valid"
+          echo "  - The 'tfstate' bucket exists on the RustFS instance"
+          exit 1
+        fi
+        echo "RustFS S3 backend connectivity test passed. Bucket 'tfstate' is accessible."
+      env:
+        RUST_FS_ACCESS: ${{ secrets.RUST_FS_ACCESS }}
+        RUST_FS_SECRET: ${{ secrets.RUST_FS_SECRET }}
+        RUST_FS_FQDN: ${{ secrets.RUST_FS_FQDN }}
 
     - name: Build creds JSON from separated secrets
       id: build_creds

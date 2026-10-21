@@ -163,6 +163,10 @@ jobs:
         fi
         
         echo "Current Runner IP: $RUNNER_IP"
+        echo "ACR Name: $ACR_NAME"
+        echo "Resource Group: $RESOURCE_GROUP"
+        echo "AKS Subnet ID: $AKS_SUBNET_ID"
+        echo "Subscription ID: $AZURE_SUBSCRIPTION_ID"
         
         echo "Adding ACR firewall rule for AKS subnet (ignore if duplicate)..."
         # Adding subnet rule; if it fails due to duplicate, we treat that as success.
@@ -183,6 +187,9 @@ jobs:
           fi
         fi
           
+        echo "Listing subnet rules after add attempt:"
+        az acr network-rule list --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --output table || true
+        
         echo "Adding temporary ACR firewall rule for $RUNNER_IP (ignore if duplicate)..."
         set +e
         IP_OUT=$(az acr network-rule add           --name "$ACR_NAME"           --resource-group "$RESOURCE_GROUP"           --ip-address="$RUNNER_IP"           --subscription "$AZURE_SUBSCRIPTION_ID" 2>&1)
@@ -201,6 +208,9 @@ jobs:
           fi
         fi
           
+        echo "Listing IP rules after add attempt:"
+        az acr network-rule list --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --output table || true
+        
         echo "Waiting for firewall rule propagation..."
         MAX_RETRIES=15
         COUNT=0
@@ -213,6 +223,10 @@ jobs:
           sleep 10
           COUNT=$((COUNT+1))
         done
+        
+        # Final list for debugging
+        echo "Final ACR network rules:"
+        az acr network-rule list --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --output json | python3 -m json.tool || true
         
         sleep 10
       env:

@@ -154,11 +154,28 @@ jobs:
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v4
+    - name: Allow GitHub Actions Runner IP on ACR
+      run: |
+        if [ -z "$RUNNER_IP" ]; then
+          RUNNER_IP=$(curl -s https://api.ipify.org)
+          echo "RUNNER_IP=$RUNNER_IP" >> "$GITHUB_ENV"
+        fi
+        echo "Adding temporary ACR firewall rule for $RUNNER_IP"
+        az acr network-rule add \
+          --name "$ACR_NAME" \
+          --resource-group "$RESOURCE_GROUP" \
+          --ip-address "$RUNNER_IP" \
+          --subscription "$AZURE_SUBSCRIPTION_ID"
+        # Firewall rule propagation is not instant.
+        sleep 20
+      env:
+        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
     - name: Login to ACR
       run: |
-        docker login ${{ env.ACR_NAME }}.azurecr.io \
+        echo "${{ env.ACR_PASSWORD }}" | docker login ${{ env.ACR_NAME }}.azurecr.io \
           -u ${{ env.ACR_USERNAME }} \
-          -p ${{ env.ACR_PASSWORD }}
+          --password-stdin
 
     - name: Build and Push Docker Image
       run: |
@@ -389,4 +406,21 @@ jobs:
             --name "$AKS_CLUSTER_NAME" \
             --api-server-authorized-ip-ranges "$USER_IP"
         fi
+
+    - name: Cleanup - Remove GitHub Actions Runner IP from ACR
+      if: always()
+      run: |
+        RUNNER_IP="${{ env.RUNNER_IP }}"
+        if [ -z "$RUNNER_IP" ] || [ -z "$ACR_NAME" ] || [ "$ACR_NAME" = "PLACEHOLDER_ACR" ]; then
+          echo "Runner IP or ACR name unavailable; skipping ACR firewall cleanup"
+          exit 0
+        fi
+        echo "Removing temporary ACR firewall rule for $RUNNER_IP"
+        az acr network-rule remove \
+          --name "$ACR_NAME" \
+          --resource-group "$RESOURCE_GROUP" \
+          --ip-address "$RUNNER_IP" \
+          --subscription "$AZURE_SUBSCRIPTION_ID" || true
+      env:
+        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 

@@ -224,17 +224,26 @@ resource "null_resource" "mongo_wait_for_ready" {
 # public_network_access_enabled = false, which is not supported on Basic
 # SKU. Premium SKU supports both public_network_access_enabled = false
 # and network_rule_set for additional security.
+#
+# Public data-plane access stays enabled so GitHub-hosted runners can be
+# allow-listed by IP. Default action is Deny: only the AKS subnet (via the
+# Microsoft.ContainerRegistry service endpoint) and temporary runner IPs
+# added by the app-deploy workflow can reach the registry.
 resource "azurerm_container_registry" "acr" {
-  name                = "appsecacr${random_string.storage_suffix.result}"
-  resource_group_name = azurerm_resource_group.appsec_exercise.name
-  location            = azurerm_resource_group.appsec_exercise.location
-  sku                 = "Premium"
-  admin_enabled       = true
+  name                          = "appsecacr${random_string.storage_suffix.result}"
+  resource_group_name           = azurerm_resource_group.appsec_exercise.name
+  location                      = azurerm_resource_group.appsec_exercise.location
+  sku                           = "Premium"
+  admin_enabled                 = true
+  public_network_access_enabled = true
 
   network_rule_set {
-    default_action = "Allow"
-    # Could restrict to VNet/AKS subnet here, but keeping Allow for simplicity
-    # since the exercise focuses on MongoDB backup exposure
+    default_action = "Deny"
+
+    virtual_network {
+      action    = "Allow"
+      subnet_id = azurerm_subnet.aks_subnet.id
+    }
   }
 }
 
@@ -244,6 +253,8 @@ resource "azurerm_subnet" "aks_subnet" {
   resource_group_name  = azurerm_resource_group.appsec_exercise.name
   virtual_network_name = azurerm_virtual_network.appsec_vnet.name
   address_prefixes     = ["10.0.2.0/24"]
+
+  service_endpoints = ["Microsoft.ContainerRegistry"]
 
   # AKS will automatically manage the service delegation when creating the cluster
   # Do not add delegation here - it causes conflicts

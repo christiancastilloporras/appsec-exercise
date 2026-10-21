@@ -162,6 +162,8 @@ jobs:
           echo "RUNNER_IP=$RUNNER_IP" >> "$GITHUB_ENV"
         fi
         
+        echo "Current Runner IP: $RUNNER_IP"
+        
         echo "Adding ACR firewall rule for AKS subnet: $AKS_SUBNET_ID"
         az acr network-rule add \
           --name "$ACR_NAME" \
@@ -176,8 +178,23 @@ jobs:
           --ip-address "$RUNNER_IP" \
           --subscription "$AZURE_SUBSCRIPTION_ID"
           
-        # Firewall rule propagation is not instant.
-        sleep 20
+        echo "Waiting for firewall rule propagation..."
+        # Propagation can take up to several minutes. 
+        # We poll the API to confirm the rule is registered before attempting login.
+        MAX_RETRIES=15
+        COUNT=0
+        while [ $COUNT -lt $MAX_RETRIES ]; do
+          if az acr network-rule list --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --query "[?ipAddress=='$RUNNER_IP'].ipAddress" -o tsv | grep -q "$RUNNER_IP"; then
+            echo "✅ Rule verified as active in Azure API."
+            break
+          fi
+          echo "Retry $((COUNT+1))/$MAX_RETRIES: Rule not yet visible..."
+          sleep 10
+          COUNT=$((COUNT+1))
+        done
+        
+        # Even after the API shows the rule, the data plane may take a few more seconds.
+        sleep 10
       env:
         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 

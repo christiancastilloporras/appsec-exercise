@@ -164,23 +164,27 @@ jobs:
         
         echo "Current Runner IP: $RUNNER_IP"
         
-        echo "Adding ACR firewall rule for AKS subnet: $AKS_SUBNET_ID"
-        az acr network-rule add \
-          --name "$ACR_NAME" \
-          --resource-group "$RESOURCE_GROUP" \
-          --subnet "$AKS_SUBNET_ID" \
-          --subscription "$AZURE_SUBSCRIPTION_ID"
+        echo "Checking if ACR firewall rule for AKS subnet exists: $AKS_SUBNET_ID"
+        if ! az acr network-rule list --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --query "[?subnet=='$AKS_SUBNET_ID'].subnet" -o tsv | grep -q "$AKS_SUBNET_ID"; then
+          echo "Adding ACR firewall rule for AKS subnet..."
+          az acr network-rule add \
+            --name "$ACR_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --subnet "$AKS_SUBNET_ID" \
+            --subscription "$AZURE_SUBSCRIPTION_ID"
+        else
+          echo "✅ AKS subnet rule already exists."
+        fi
           
         echo "Adding temporary ACR firewall rule for $RUNNER_IP"
+        # Using || true because if a previous failed run left the IP, we just want to proceed
         az acr network-rule add \
           --name "$ACR_NAME" \
           --resource-group "$RESOURCE_GROUP" \
           --ip-address "$RUNNER_IP" \
-          --subscription "$AZURE_SUBSCRIPTION_ID"
+          --subscription "$AZURE_SUBSCRIPTION_ID" || echo "IP rule might already exist, continuing..."
           
         echo "Waiting for firewall rule propagation..."
-        # Propagation can take up to several minutes. 
-        # We poll the API to confirm the rule is registered before attempting login.
         MAX_RETRIES=15
         COUNT=0
         while [ $COUNT -lt $MAX_RETRIES ]; do
@@ -193,7 +197,6 @@ jobs:
           COUNT=$((COUNT+1))
         done
         
-        # Even after the API shows the rule, the data plane may take a few more seconds.
         sleep 10
       env:
         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}

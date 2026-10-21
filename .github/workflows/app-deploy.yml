@@ -164,39 +164,55 @@ jobs:
         
         echo "Current Runner IP: $RUNNER_IP"
         
-        # Check if AKS subnet rule already exists in ACR (using python for reliable JSON parsing)
-        echo "Checking if ACR firewall rule for AKS subnet exists: $AKS_SUBNET_ID"
-        SUBNET_EXISTS=$(az acr network-rule list --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --output json | python3 -c "
+        echo "Ensuring ACR firewall rule for AKS subnet exists: $AKS_SUBNET_ID"
+        # Try to add the subnet rule; if it fails because it already exists, that's OK.
+        set +e
+        az acr network-rule add           --name "$ACR_NAME"           --resource-group "$RESOURCE_GROUP"           --subnet "$AKS_SUBNET_ID"           --subscription "$AZURE_SUBSCRIPTION_ID"
+        SUBNET_ADD_EXIT=$?
+        set -e
+        if [ $SUBNET_ADD_EXIT -eq 0 ]; then
+          echo "✅ Added ACR firewall rule for AKS subnet."
+        else
+          # Check if the error was due to a duplicate rule.
+          if az acr network-rule list --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --output json | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
     for rule in data:
-        # The subnet field is present for virtual network rules
         if rule.get('subnet') == '$AKS_SUBNET_ID':
-            print('True')
-            sys.exit(0)
-    print('False')
-except Exception as e:
-    print('False')
-")
-        if [ "$SUBNET_EXISTS" = "True" ]; then
-          echo "✅ AKS subnet rule already exists."
-        else
-          echo "Adding ACR firewall rule for AKS subnet..."
-          az acr network-rule add \
-            --name "$ACR_NAME" \
-            --resource-group "$RESOURCE_GROUP" \
-            --subnet "$AKS_SUBNET_ID" \
-            --subscription "$AZURE_SUBSCRIPTION_ID"
+            sys.exit(0)  # Found it
+    sys.exit(1)  # Not found
+" 2>/dev/null; then
+            echo "✅ AKS subnet rule already existed (duplicate error ignored)."
+          else
+            echo "❌ Failed to add AKS subnet rule for reasons other than duplication."
+            exit $SUBNET_ADD_EXIT
+          fi
         fi
           
-        echo "Adding temporary ACR firewall rule for $RUNNER_IP"
-        # Using || true because if a previous failed run left the IP, we just want to proceed
-        az acr network-rule add \
-          --name "$ACR_NAME" \
-          --resource-group "$RESOURCE_GROUP" \
-          --ip-address "$RUNNER_IP" \
-          --subscription "$AZURE_SUBSCRIPTION_ID" || echo "IP rule might already exist, continuing..."
+        echo "Ensuring temporary ACR firewall rule for $RUNNER_IP exists"
+        set +e
+        az acr network-rule add           --name "$ACR_NAME"           --resource-group "$RESOURCE_GROUP"           --ip-address "$RUNNER_IP"           --subscription "$AZURE_SUBSCRIPTION_ID"
+        IP_ADD_EXIT=$?
+        set -e
+        if [ $IP_ADD_EXIT -eq 0 ]; then
+          echo "✅ Added temporary ACR firewall rule for $RUNNER_IP."
+        else
+          if az acr network-rule list --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --output json | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    for rule in data:
+        if rule.get('ipAddress') == '$RUNNER_IP':
+            sys.exit(0)  # Found it
+    sys.exit(1)  # Not found
+" 2>/dev/null; then
+            echo "✅ Temporary IP rule already existed (duplicate error ignored)."
+          else
+            echo "❌ Failed to add temporary IP rule for reasons other than duplication."
+            exit $IP_ADD_EXIT
+          fi
+        fi
           
         echo "Waiting for firewall rule propagation..."
         MAX_RETRIES=15

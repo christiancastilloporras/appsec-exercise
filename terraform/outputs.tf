@@ -81,3 +81,7 @@ output "aks_nsg_id" {
 output "aks_nsg_name" {
   value = azurerm_network_security_group.aks_nsg.name
 }
+
+output "aks_subnet_id" {
+  value = azurerm_subnet.aks_subnet.id
+}

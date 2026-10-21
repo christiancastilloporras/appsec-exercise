@@ -157,10 +157,14 @@ jobs:
       uses: docker/setup-buildx-action@v4
     - name: Allow AKS Subnet and GitHub Actions Runner IP on ACR
       run: |
+        # Fetch the current runner IP address unconditionally
+        RUNNER_IP=$(curl -s https://api.ipify.org)
         if [ -z "$RUNNER_IP" ]; then
-          RUNNER_IP=$(curl -s https://api.ipify.org)
-          echo "RUNNER_IP=$RUNNER_IP" >> "$GITHUB_ENV"
+          echo "❌ Failed to detect runner IP address via ipify.org" >&2
+          exit 1
         fi
+        echo "Runner IP detected: $RUNNER_IP"
+        echo "RUNNER_IP=$RUNNER_IP" >> "$GITHUB_ENV"
         
         echo "Current Runner IP: $RUNNER_IP"
         echo "ACR Name: $ACR_NAME"

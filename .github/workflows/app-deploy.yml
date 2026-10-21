@@ -164,16 +164,30 @@ jobs:
         
         echo "Current Runner IP: $RUNNER_IP"
         
+        # Check if AKS subnet rule already exists in ACR (using python for reliable JSON parsing)
         echo "Checking if ACR firewall rule for AKS subnet exists: $AKS_SUBNET_ID"
-        if ! az acr network-rule list --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --query "[?subnet=='$AKS_SUBNET_ID'].subnet" -o tsv | grep -q "$AKS_SUBNET_ID"; then
+        SUBNET_EXISTS=$(az acr network-rule list --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --output json | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    for rule in data:
+        # The subnet field is present for virtual network rules
+        if rule.get('subnet') == '$AKS_SUBNET_ID':
+            print('True')
+            sys.exit(0)
+    print('False')
+except Exception as e:
+    print('False')
+")
+        if [ "$SUBNET_EXISTS" = "True" ]; then
+          echo "✅ AKS subnet rule already exists."
+        else
           echo "Adding ACR firewall rule for AKS subnet..."
           az acr network-rule add \
             --name "$ACR_NAME" \
             --resource-group "$RESOURCE_GROUP" \
             --subnet "$AKS_SUBNET_ID" \
             --subscription "$AZURE_SUBSCRIPTION_ID"
-        else
-          echo "✅ AKS subnet rule already exists."
         fi
           
         echo "Adding temporary ACR firewall rule for $RUNNER_IP"
@@ -200,7 +214,6 @@ jobs:
         sleep 10
       env:
         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
     - name: Login to ACR
       run: |
         echo "${{ env.ACR_PASSWORD }}" | docker login ${{ env.ACR_NAME }}.azurecr.io \

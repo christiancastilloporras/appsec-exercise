@@ -168,8 +168,10 @@ jobs:
         echo "AKS Subnet ID: $AKS_SUBNET_ID"
         echo "Subscription ID: $AZURE_SUBSCRIPTION_ID"
         
-        echo "Adding ACR firewall rule for AKS subnet (ignore if duplicate)..."
-        # Adding subnet rule; if it fails due to duplicate, we treat that as success.
+        echo "=== Checking ACR public network access ==="
+        az acr show --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --query "{publicNetworkAccess: publicNetworkAccessEnabled, defaultAction: networkRuleSet.defaultAction}" --output table || true
+        
+        echo "=== Ensuring ACR firewall rule for AKS subnet ==="
         set +e
         SUBNET_OUT=$(az acr network-rule add           --name "$ACR_NAME"           --resource-group "$RESOURCE_GROUP"           --subnet "$AKS_SUBNET_ID"           --subscription "$AZURE_SUBSCRIPTION_ID" 2>&1)
         SUBNET_EXIT=$?
@@ -177,7 +179,6 @@ jobs:
         if [ $SUBNET_EXIT -eq 0 ]; then
           echo "✅ Added ACR firewall rule for AKS subnet."
         else
-          # Check if the error is about duplicate virtual network rule
           if echo "$SUBNET_OUT" | grep -iq "duplicate virtual network rule"; then
             echo "✅ AKS subnet rule already existed (duplicate error ignored)."
           else
@@ -186,11 +187,8 @@ jobs:
             exit $SUBNET_EXIT
           fi
         fi
-          
-        echo "Listing subnet rules after add attempt:"
-        az acr network-rule list --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --output table || true
         
-        echo "Adding temporary ACR firewall rule for $RUNNER_IP (ignore if duplicate)..."
+        echo "=== Ensuring temporary ACR firewall rule for $RUNNER_IP ==="
         set +e
         IP_OUT=$(az acr network-rule add           --name "$ACR_NAME"           --resource-group "$RESOURCE_GROUP"           --ip-address="$RUNNER_IP"           --subscription "$AZURE_SUBSCRIPTION_ID" 2>&1)
         IP_EXIT=$?
@@ -198,7 +196,6 @@ jobs:
         if [ $IP_EXIT -eq 0 ]; then
           echo "✅ Added temporary ACR firewall rule for $RUNNER_IP."
         else
-          # Check for duplicate IP rule
           if echo "$IP_OUT" | grep -iq "duplicate.*ip rule\|IP address rule.*already exists"; then
             echo "✅ Temporary IP rule already existed (duplicate error ignored)."
           else
@@ -207,36 +204,55 @@ jobs:
             exit $IP_EXIT
           fi
         fi
-          
-        echo "Listing IP rules after add attempt:"
-        az acr network-rule list --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --output table || true
         
-        echo "Waiting for firewall rule propagation..."
-        MAX_RETRIES=15
+        echo "=== Waiting for firewall rule propagation (max 10 minutes) ==="
+        MAX_RETRIES=30   # 30 * 20s = 10 minutes
         COUNT=0
+        RULE_FOUND=false
         while [ $COUNT -lt $MAX_RETRIES ]; do
           if az acr network-rule list --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --query "[?ipAddress=='$RUNNER_IP'].ipAddress" -o tsv | grep -q "$RUNNER_IP"; then
             echo "✅ Rule verified as active in Azure API."
+            RULE_FOUND=true
             break
           fi
-          echo "Retry $((COUNT+1))/$MAX_RETRIES: Rule not yet visible..."
-          sleep 10
+          echo "Retry $((COUNT+1))/$MAX_RETRIES: Rule not yet visible... (waited $((COUNT*20))s)"
+          sleep 20
           COUNT=$((COUNT+1))
         done
         
-        # Final list for debugging
-        echo "Final ACR network rules:"
-        az acr network-rule list --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --output json | python3 -m json.tool || true
+        if [ "$RULE_FOUND" = "false" ]; then
+          echo "❌ Rule never appeared in API after waiting."
+          echo "=== Dumping full ACR network rules for debugging ==="
+          az acr network-rule list --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP" --output json || true
+          exit 1
+        fi
         
-        sleep 10
+        # Additional buffer for data-plane propagation
+        echo "Waiting additional 20 seconds for data-plane propagation..."
+        sleep 20
+        
       env:
         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-    - name: Login to ACR
+    - name: Login to ACR (with retries)
       run: |
-        echo "${{ env.ACR_PASSWORD }}" | docker login ${{ env.ACR_NAME }}.azurecr.io \
-          -u ${{ env.ACR_USERNAME }} \
-          --password-stdin
-
+        MAX_ATTEMPTS=5
+        ATTEMPT=1
+        until [ $ATTEMPT -gt $MAX_ATTEMPTS ]; do
+          echo "Attempt $ATTEMPT of $MAX_ATTEMPTS to login to ACR..."
+          if echo "${{ env.ACR_PASSWORD }}" | docker login ${{ env.ACR_NAME }}.azurecr.io -u ${{ env.ACR_USERNAME }} --password-stdin; then
+            echo "✅ Successfully logged in to ACR."
+            break
+          else
+            echo "❌ Login attempt $ATTEMPT failed."
+            if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+              echo "❌ All login attempts failed."
+              exit 1
+            fi
+            echo "Waiting 10 seconds before retry..."
+            sleep 10
+          fi
+          ATTEMPT=$((ATTEMPT+1))
+        done
     - name: Build and Push Docker Image
       run: |
         IMAGE_TAG="${{ env.IMAGE_TAG }}"

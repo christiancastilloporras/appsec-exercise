@@ -1,0 +1,25 @@
+# Yor custom tagging configuration
+# This file lives OUTSIDE the terraform/ directory to prevent PR authors from
+# editing it to exfiltrate CI secrets (see docs/3.Custom Taggers/Custom_tagger_YAML.md)
+# Security considerations for --config-file).
+#
+# Adds organizational context tags for AppSec posture tracking:
+#   team            - Owning team for ownership tracking
+#   environment     - Deployment environment
+#   data_sensitivity - Data classification for risk prioritization
+#   project         - Project identifier for cost allocation
+tag_groups:
+  - name: ownership
+    tags:
+      - name: team
+        value:
+          default: appsec-demo
+      - name: environment
+        value:
+          default: dev
+      - name: project
+        value:
+          default: wiz-exercise-appsec
+      - name: data_sensitivity
+        value:
+          default: high

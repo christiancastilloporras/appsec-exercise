@@ -9,6 +9,21 @@ provider "azurerm" {
 resource "azurerm_resource_group" "appsec_exercise" {
   name     = "appsec-exercise-rg"
   location = var.location
+  tags = {
+    data_sensitivity     = "high"
+    environment          = "dev"
+    git_commit           = "921d6bca1d5015cf77f32a723f87c527866ac27c"
+    git_file             = "terraform/main.tf"
+    git_last_modified_at = "2026-10-12 19:01:14"
+    git_last_modified_by = "root@hermes.cloudguardian.xyz"
+    git_modifiers        = "root"
+    git_org              = "christiancastilloporras"
+    git_repo             = "appsec-exercise"
+    project              = "wiz-exercise-appsec"
+    team                 = "appsec-demo"
+    yor_name             = "appsec_exercise"
+    yor_trace            = "7678600d-80a7-4eed-bf85-bd40d1b29505"
+  }
 }
 
 # Virtual Network
@@ -17,6 +32,21 @@ resource "azurerm_virtual_network" "appsec_vnet" {
   address_space       = ["10.0.0.0/16"]
   location            = azurerm_resource_group.appsec_exercise.location
   resource_group_name = azurerm_resource_group.appsec_exercise.name
+  tags = {
+    data_sensitivity     = "high"
+    environment          = "dev"
+    git_commit           = "921d6bca1d5015cf77f32a723f87c527866ac27c"
+    git_file             = "terraform/main.tf"
+    git_last_modified_at = "2026-10-12 19:01:14"
+    git_last_modified_by = "root@hermes.cloudguardian.xyz"
+    git_modifiers        = "root"
+    git_org              = "christiancastilloporras"
+    git_repo             = "appsec-exercise"
+    project              = "wiz-exercise-appsec"
+    team                 = "appsec-demo"
+    yor_name             = "appsec_vnet"
+    yor_trace            = "ef0cef38-58ea-420d-8125-060a784085be"
+  }
 }
 
 # Subnet for MongoDB VM
@@ -61,6 +91,21 @@ resource "azurerm_network_security_group" "appsec_nsg" {
 
   # Mongo (27017) rule removed from shared NSG
   # Mongo VM gets its own NSG that only allows AKS cluster traffic
+  tags = {
+    data_sensitivity     = "high"
+    environment          = "dev"
+    git_commit           = "921d6bca1d5015cf77f32a723f87c527866ac27c"
+    git_file             = "terraform/main.tf"
+    git_last_modified_at = "2026-10-12 19:01:14"
+    git_last_modified_by = "root@hermes.cloudguardian.xyz"
+    git_modifiers        = "root"
+    git_org              = "christiancastilloporras"
+    git_repo             = "appsec-exercise"
+    project              = "wiz-exercise-appsec"
+    team                 = "appsec-demo"
+    yor_name             = "appsec_nsg"
+    yor_trace            = "f6d3413e-fa38-4351-8be4-23ff720a091f"
+  }
 }
 
 # Mongo VM
@@ -75,6 +120,21 @@ resource "azurerm_network_interface" "mongo_nic" {
     subnet_id                     = azurerm_subnet.appsec_subnet.id
     private_ip_address_allocation = "Dynamic"
     public_ip_address_id          = azurerm_public_ip.mongo_pip.id
+  }
+  tags = {
+    data_sensitivity     = "high"
+    environment          = "dev"
+    git_commit           = "921d6bca1d5015cf77f32a723f87c527866ac27c"
+    git_file             = "terraform/main.tf"
+    git_last_modified_at = "2026-10-12 19:01:14"
+    git_last_modified_by = "root@hermes.cloudguardian.xyz"
+    git_modifiers        = "root"
+    git_org              = "christiancastilloporras"
+    git_repo             = "appsec-exercise"
+    project              = "wiz-exercise-appsec"
+    team                 = "appsec-demo"
+    yor_name             = "mongo_nic"
+    yor_trace            = "9cff1562-273f-4206-b319-7ee5534eee1b"
   }
 }
 
@@ -124,6 +184,21 @@ resource "azurerm_network_security_group" "mongo_nsg" {
     source_address_prefix      = "0.0.0.0/0"
     destination_address_prefix = "*"
   }
+  tags = {
+    data_sensitivity     = "high"
+    environment          = "dev"
+    git_commit           = "921d6bca1d5015cf77f32a723f87c527866ac27c"
+    git_file             = "terraform/main.tf"
+    git_last_modified_at = "2026-10-12 19:01:14"
+    git_last_modified_by = "root@hermes.cloudguardian.xyz"
+    git_modifiers        = "root"
+    git_org              = "christiancastilloporras"
+    git_repo             = "appsec-exercise"
+    project              = "wiz-exercise-appsec"
+    team                 = "appsec-demo"
+    yor_name             = "mongo_nsg"
+    yor_trace            = "267352d7-7338-49c6-b106-1e209ca97e04"
+  }
 }
 
 # Associate Mongo NSG with Mongo NIC
@@ -140,6 +215,21 @@ resource "azurerm_public_ip" "mongo_pip" {
   allocation_method   = "Static"
   # Standard SKU (Basic is deprecated, March 31, 2025)
   sku = "Standard"
+  tags = {
+    data_sensitivity     = "high"
+    environment          = "dev"
+    git_commit           = "921d6bca1d5015cf77f32a723f87c527866ac27c"
+    git_file             = "terraform/main.tf"
+    git_last_modified_at = "2026-10-12 19:01:14"
+    git_last_modified_by = "root@hermes.cloudguardian.xyz"
+    git_modifiers        = "root"
+    git_org              = "christiancastilloporras"
+    git_repo             = "appsec-exercise"
+    project              = "wiz-exercise-appsec"
+    team                 = "appsec-demo"
+    yor_name             = "mongo_pip"
+    yor_trace            = "123176d7-e6a6-49b8-96ed-d517caa408c0"
+  }
 }
 
 # Mongo VM
@@ -174,6 +264,21 @@ resource "azurerm_linux_virtual_machine" "mongo_vm" {
     mongo_admin_password = var.mongo_admin_password
     mongo_version        = var.mongo_version
   }))
+  tags = {
+    data_sensitivity     = "high"
+    environment          = "dev"
+    git_commit           = "175fa677fbe42c21d9e8b0555a52f93c5bccf159"
+    git_file             = "terraform/main.tf"
+    git_last_modified_at = "2026-10-16 17:00:12"
+    git_last_modified_by = "root@hermes.cloudguardian.xyz"
+    git_modifiers        = "root"
+    git_org              = "christiancastilloporras"
+    git_repo             = "appsec-exercise"
+    project              = "wiz-exercise-appsec"
+    team                 = "appsec-demo"
+    yor_name             = "mongo_vm"
+    yor_trace            = "7f22a3ab-6ade-43b4-9c81-c086f1daebd4"
+  }
 }
 
 # MongoDB is provisioned via cloud-init (custom_data on the VM resource)
@@ -239,6 +344,21 @@ resource "azurerm_container_registry" "acr" {
 
   network_rule_set {
     default_action = "Deny"
+  }
+  tags = {
+    data_sensitivity     = "high"
+    environment          = "dev"
+    git_commit           = "57367d84720b7624acb265097f8cfd89795fae92"
+    git_file             = "terraform/main.tf"
+    git_last_modified_at = "2026-10-21 16:41:38"
+    git_last_modified_by = "hermes@agent.local"
+    git_modifiers        = "hermes/root"
+    git_org              = "christiancastilloporras"
+    git_repo             = "appsec-exercise"
+    project              = "wiz-exercise-appsec"
+    team                 = "appsec-demo"
+    yor_name             = "acr"
+    yor_trace            = "eaab1af1-edaf-4d30-b001-836080e4aa15"
   }
 }
 
@@ -332,6 +452,21 @@ resource "azurerm_network_security_group" "aks_nsg" {
     source_address_prefix      = "AzureLoadBalancer"
     destination_address_prefix = "*"
   }
+  tags = {
+    data_sensitivity     = "high"
+    environment          = "dev"
+    git_commit           = "921d6bca1d5015cf77f32a723f87c527866ac27c"
+    git_file             = "terraform/main.tf"
+    git_last_modified_at = "2026-10-12 19:01:14"
+    git_last_modified_by = "root@hermes.cloudguardian.xyz"
+    git_modifiers        = "root"
+    git_org              = "christiancastilloporras"
+    git_repo             = "appsec-exercise"
+    project              = "wiz-exercise-appsec"
+    team                 = "appsec-demo"
+    yor_name             = "aks_nsg"
+    yor_trace            = "f565b09b-7c83-4b87-9bd5-438465fdf962"
+  }
 }
 
 # Associate NSG with AKS subnet (required for AZurerm provider v4+)
@@ -378,6 +513,21 @@ resource "azurerm_kubernetes_cluster" "aks" {
   # Empty list = deny all public access (secure by default).
   api_server_access_profile {
     authorized_ip_ranges = var.aks_authorized_ip_ranges
+  }
+  tags = {
+    data_sensitivity     = "high"
+    environment          = "dev"
+    git_commit           = "921d6bca1d5015cf77f32a723f87c527866ac27c"
+    git_file             = "terraform/main.tf"
+    git_last_modified_at = "2026-10-12 19:01:14"
+    git_last_modified_by = "root@hermes.cloudguardian.xyz"
+    git_modifiers        = "root"
+    git_org              = "christiancastilloporras"
+    git_repo             = "appsec-exercise"
+    project              = "wiz-exercise-appsec"
+    team                 = "appsec-demo"
+    yor_name             = "aks"
+    yor_trace            = "022a27a3-a959-4d89-9008-395723351883"
   }
 }
 
@@ -433,6 +583,21 @@ resource "azurerm_storage_account" "backup_storage" {
   network_rules {
     default_action = "Deny"
     bypass         = ["AzureServices"]
+  }
+  tags = {
+    data_sensitivity     = "high"
+    environment          = "dev"
+    git_commit           = "65370327671f0438bf0c2c0884159fabc66acb71"
+    git_file             = "terraform/main.tf"
+    git_last_modified_at = "2026-10-16 00:42:08"
+    git_last_modified_by = "root@hermes.cloudguardian.xyz"
+    git_modifiers        = "root"
+    git_org              = "christiancastilloporras"
+    git_repo             = "appsec-exercise"
+    project              = "wiz-exercise-appsec"
+    team                 = "appsec-demo"
+    yor_name             = "backup_storage"
+    yor_trace            = "491df0e3-c335-4932-a6d6-b80a89ed4e67"
   }
 }
 

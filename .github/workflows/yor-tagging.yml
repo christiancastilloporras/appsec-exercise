@@ -1,0 +1,32 @@
+name: Yor IaC Tagging
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  yor-tag:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # Required: Yor uses git-blame to derive git_* tags
+
+      - name: Run Yor auto-tagger
+        uses: bridgecrewio/yor-action@main
+        with:
+          directory: terraform
+          parsers: Terraform
+          config_file: .yor/config.yaml
+          tag_groups: git,code2cloud
+          skip_tags: git_modifiers  # Reduces noise from bot accounts in CI
+          output_format: cli
+          commit_changes: true
